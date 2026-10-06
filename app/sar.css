@@ -33,6 +33,8 @@ input.changed, select.changed { border-color:var(--ok); box-shadow:0 0 0 2px rgb
 .grid2 input, .grid3 input, .grid2 select, .grid3 select { width:100%; }
 .grid2 label .hint, .grid3 label .hint { min-height:14px; font-size:11px; text-align:right; }
 .grid2 label.check { flex-direction:row; align-items:center; justify-content:space-between; }
+.chips { display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; font-size:12px; margin:4px 0; }
+.chips label { display:inline-flex; flex-direction:row; align-items:center; gap:3px; margin:0; }
 .seg { display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; margin:4px 0 8px; }
 .seg input { display:none; } .seg label { flex:1; justify-content:center; margin:0; padding:6px 0; cursor:pointer; font-size:12px; }
 .seg input:checked + label { background:var(--blue); color:#fff; }

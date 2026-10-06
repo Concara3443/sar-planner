@@ -269,10 +269,15 @@ load('data/costa.js', 'window.COAST = []');
       <div class="grid3">
         <label>EOBT (UTC) <input id="eobt" placeholder="HHMM" maxlength="4"></label>
         <label>Alternativo <input id="altn" list="apts" placeholder="LEBL"></label>
-        <label>STS/ <input id="sts" placeholder="auto"></label>
+        <label>STS/ <input id="sts" placeholder="auto" title="Vacío: automático según la misión. «-»: ninguno"></label>
       </div>
       <div class="grid2">
-        <label>Operador (OPR/) <input id="opr" placeholder="p. ej. SALVAMENTO MARITIMO"></label>
+        <label>Operador (OPR/) <input id="opr" list="oprList" placeholder="p. ej. SALVAMENTO MARITIMO"></label>
+        <datalist id="oprList">
+          <option value="SALVAMENTO MARITIMO"></option><option value="EJERCITO DEL AIRE"></option><option value="ARMADA"></option>
+          <option value="GUARDIA CIVIL"></option><option value="POLICIA NACIONAL"></option><option value="PROTECCION CIVIL"></option>
+          <option value="BOMBEROS"></option><option value="INSTITUTO GEOGRAFICO NACIONAL"></option>
+        </datalist>
         <label>Equipo (casilla 10) <input id="equip" placeholder="auto según avión"></label>
       </div>
       <div class="grid2">
@@ -287,6 +292,17 @@ load('data/costa.js', 'window.COAST = []');
         </datalist>
       </div>
       <div id="fplTypeBtns" class="hint"></div>
+      <div id="stsPick" class="chips" title="Marca uno o varios indicadores STS/">STS:
+        <label><input type="checkbox" value="SAR"> SAR</label> <label><input type="checkbox" value="STATE"> STATE</label>
+        <label><input type="checkbox" value="HOSP"> HOSP</label> <label><input type="checkbox" value="MEDEVAC"> MEDEVAC</label>
+        <label><input type="checkbox" value="HUM"> HUM</label> <label><input type="checkbox" value="FLTCK"> FLTCK</label>
+      </div>
+      <label>Misión (lo que dice el RMK y el STS automático) <select id="fplMission">
+        <option value="">Auto (según lo que haces en la página)</option><option value="sar">Búsqueda SAR</option>
+        <option value="training">Entrenamiento SAR</option><option value="patrol">Vigilancia marítima</option>
+        <option value="photo">Fotografía aérea</option><option value="survey">Survey / reconocimiento</option>
+        <option value="positioning">Posicionamiento (sin misión)</option>
+      </select></label>
       <label>Observaciones (RMK/) <input id="rmk" placeholder="automático según la misión"></label>
       <textarea id="fplOut" readonly rows="7"></textarea>
       <div class="grid3">

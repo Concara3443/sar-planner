@@ -155,11 +155,11 @@ function fillPositions(keep) {
 
 // ---------- Estado de los campos ----------
 const FIELDS = ['type', 'lat', 'lon', 'hdg', 'unit', 'len', 'sp', 'n', 'dir', 'vs2', 'xh', 'tas', 'bank', 'alt', 'gota', 'wdir', 'wkt', 'walign', 'wreal', 'acft', 'il', 'auto', 'area', 'trail', 'cov', 'spman', 'sobj', 'pfd', 'craft', 'vis', 'sea', 'cf', 'fat', 'fov', 'ov', 'agl', 'px', 'dep', 'park', 'arr', 'fname', 'cruise', 'sid', 'star', 'viaOut', 'viaBack',
-  'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'fplType', 'fplWake', 'sarbase', 'rwyDep', 'rwyArr',
+  'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'fplType', 'fplWake', 'fplMission', 'sarbase', 'rwyDep', 'rwyArr',
   'endur', 'resv', 'drift', 'lkpLat', 'lkpLon', 'dObj', 'dHours', 'dX', 'dWc', 'dCdir', 'dCkt'];
 const DIST = ['len', 'sp', 'spman'];
 const DEFAULTS = { type: 'PS', lat: 41.392957, lon: 1.944372, hdg: 45, unit: 'NM', dir: '1', vs2: false, gota: false, acft: 'custom', wdir: 0, wkt: 0, walign: false, wreal: false, il: '1', auto: true, area: '', trail: true, cov: 'sar', spman: '', sobj: 'Raft 6 person', pfd: false, craft: 'plane', vis: 10, sea: '0', cf: '1', fat: false, fov: 54, ov: 30, agl: '', px: 6000, cruise: '', sid: 'auto', star: 'auto', viaOut: '', viaBack: '',
-                   cs: 'ECGCM', rules: 'I', ftype: 'X', eobt: '', altn: '', sts: '', opr: '', equip: '', rmk: '', fplType: '', fplWake: '', sarbase: '', rwyDep: '', rwyArr: '',
+                   cs: 'ECGCM', rules: 'I', ftype: 'X', eobt: '', altn: '', sts: '', opr: '', equip: '', rmk: '', fplType: '', fplWake: '', fplMission: '', sarbase: '', rwyDep: '', rwyArr: '',
                    endur: '', resv: 30, drift: false, lkpLat: '', lkpLon: '', dObj: 'piw', dHours: 2, dX: '0.1', dWc: true, dCdir: 0, dCkt: 0,
                    dep: 'LELL', park: '', arr: 'LELL', fname: 'fpl', ...STD_COMMON, ...STD.PS };
 const fmt = v => +(+v).toFixed(3);
@@ -801,7 +801,8 @@ function update() {
 
   styleApts();
   tlRefresh();
-  $('fplOut').value = fplText();
+  $('fplOut').value = fplText(); syncStsPick();
+  $('sts').placeholder = stsValue() && !$('sts').value ? `auto: ${stsValue()}` : 'auto';
   scheduleWind();
   const st = {};
   for (const f of FIELDS) st[f] = $(f).type === 'checkbox' ? $(f).checked : $(f).value;
@@ -1172,7 +1173,17 @@ const FPL_EQ = {
 const TYPE_WAKE = { A139: 'L', EC25: 'M', AS32: 'M', NH90: 'M', CN35: 'M', C295: 'M', C30J: 'M', H60: 'M' };
 // Qué es el vuelo (para RMK y STS): búsqueda si el modo es SAR o se calcula la deriva (aunque la separación sea a mano),
 // fotografía, o si no, survey
-const missionKind = () => ($('cov').value === 'cam' ? 'photo' : $('cov').value === 'sar' || $('drift').checked ? 'sar' : 'survey');
+// (o la que elijas en «Misión»)
+const missionKind = () => $('fplMission').value || ($('cov').value === 'cam' ? 'photo' : $('cov').value === 'sar' || $('drift').checked ? 'sar' : 'survey');
+// STS/: el que escribas o marques; vacío = automático (SAR en búsqueda); «-» = ninguno
+const stsValue = () => { const v = $('sts').value.trim(); return v === '-' ? '' : clean18(v) || (missionKind() === 'sar' ? 'SAR' : ''); };
+// Casillas de STS: reflejan el valor efectivo y, al marcarlas, lo escriben en el campo
+function syncStsPick() { const t = stsValue().split(' '); for (const c of $('stsPick').querySelectorAll('input')) c.checked = t.includes(c.value); }
+$('stsPick').addEventListener('change', () => {
+  const t = [...$('stsPick').querySelectorAll('input')].filter(c => c.checked).map(c => c.value);
+  const extra = stsValue().split(' ').filter(x => x && ![...$('stsPick').querySelectorAll('input')].some(c => c.value === x)); // los escritos a mano se quedan
+  $('sts').value = [...t, ...extra].join(' ') || '-'; update();
+});
 const clean18 = t => t.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9 ./-]/g, ' ').replace(/\s+/g, ' ').trim();
 // Observaciones automáticas según lo que se hace
 function autoRmk() {
@@ -1180,8 +1191,12 @@ function autoRmk() {
   const where = p.type === 'AREA' ? `AREA ${(polyAreaM2(p.area.length >= 3 ? p.area : plan.all.map(w => w.pos)) / 1e6).toFixed(0)}KM2 ${Math.round(plan.all.length / 2)} LEGS`
     : `${p.type} PATTERN CSP ${icaoCoord(p.csp)}`;
   const part = plan.parts.length > 1 ? ` FLT ${plan.k + 1} OF ${plan.parts.length}` : '';
-  if (missionKind() === 'sar') return clean18(`SAR MISSION ${where} SRCH ALT ${alt}FT TRK SPACING ${sp}NM OBJ ${$('sobj').selectedOptions[0]?.text || ''}${part}`);
-  if ($('cov').value === 'cam') {
+  const kind = missionKind(), obj = $('cov').value === 'sar' || $('drift').checked ? ` OBJ ${$('sobj').selectedOptions[0]?.text || ''}` : '';
+  if (kind === 'sar') return clean18(`SAR MISSION ${where} SRCH ALT ${alt}FT TRK SPACING ${sp}NM${obj}${part}`);
+  if (kind === 'training') return clean18(`SAR TRAINING ${where} SRCH ALT ${alt}FT TRK SPACING ${sp}NM${part}`);
+  if (kind === 'patrol') return clean18(`MARITIME SURVEILLANCE ${where} ${alt}FT${part}`);
+  if (kind === 'positioning') return clean18(`POSITIONING FLIGHT${part}`);
+  if (kind === 'photo') {
     const gsd = coverage()?.swath / (+$('px').value || 6000) * 100;
     return clean18(`AERIAL PHOTO SURVEY ${where} BLOCK ${alt}FT${gsd ? ` GSD ${Math.round(gsd)}CM` : ''}${part}`);
   }
@@ -1210,7 +1225,7 @@ function fplFields() {
     eetSec: (lastTimes.pat || 0) + (lastTimes.tr || 0),
     depGate: plan.pre.filter(q => q.gate === 'dep').map(q => ({ fix: q.name, ft: q.alt }))[0] || null,
     arrGate: plan.post.filter(q => q.gate === 'arr').map(q => ({ fix: q.name, ft: q.alt }))[0] || null,
-    sts: clean18($('sts').value) || (missionKind() === 'sar' ? 'SAR' : ''),
+    sts: stsValue(),
     pbn: equip.includes('R') ? eq[4] : '', nav: equip.includes('G') && eq[4] ? 'SBAS' : '', sur: eq[5],
     dof: `${String(now.getUTCFullYear()).slice(2)}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}`,
     reg: /^[A-Z]{5}$/.test(cs) ? cs : '', opr: clean18($('opr').value), rmk: clean18($('rmk').value) || autoRmk(),
