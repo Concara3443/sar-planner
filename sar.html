@@ -7,11 +7,16 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <!-- Generado por scripts\exportar_aeropuertos.py desde Little Navmap (MSFS 2024) -->
-<script src="data/aeropuertos.js" onerror="window.AIRPORTS_DB = {}"></script>
-<script src="data/navdata.js" onerror="window.NAV_DB = { nav: {}, proc: {} }"></script>
-<script src="data/iamsar.js"></script>
-<script src="data/sarbases.js" onerror="window.SAR_BASES = []"></script>
-<link rel="stylesheet" href="app/sar.css">
+<script>
+// Versión: súbela al cambiar cualquier .js o .css y el navegador los vuelve a pedir (si no, puede usar una copia vieja)
+const V = 4, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
+document.write(`<link rel="stylesheet" href="app/sar.css?v=${V}">`);
+load('data/aeropuertos.js', 'window.AIRPORTS_DB = {}');
+load('data/navdata.js', 'window.NAV_DB = { nav: {}, proc: {} }');
+load('data/iamsar.js');
+load('data/sarbases.js', 'window.SAR_BASES = []');
+load('data/costa.js', 'window.COAST = []');
+</script>
 </head>
 <body>
 <div id="side">
@@ -72,7 +77,8 @@
       </div>
       <div id="windInfo" class="note hint"></div>
       <button id="ideal" class="small primary">✨ Calcular velocidad, altitud y rumbo ideales</button>
-      <button id="sim" class="small sec" title="Inventa un caso que encaje con el avión elegido: búsqueda en el mar (con deriva y posición real oculta) o encargo de fotografía">🎲 Simular un caso con este avión</button>
+      <button id="sim" class="small sec" title="Inventa un caso que encaje con el avión elegido: búsqueda en el mar (con deriva) o encargo de fotografía">🎲 Simular un caso con este avión</button>
+      <div id="simInfo" class="note"></div>
       <div id="idealInfo" class="note hint"></div>
     </div>
   </details>
@@ -204,6 +210,7 @@
           <label>Corriente marina (kt) <input id="dCkt" type="number" step="0.1" min="0"></label>
         </div>
         <div id="driftInfo" class="note hint"></div>
+        <div id="bestInfo" class="note"></div>
       </div>
     </div>
   </details>
@@ -279,6 +286,7 @@
           <option value="C30J">C-130J / HC-130J (USCG)</option><option value="H60">MH-60 / HH-60</option>
         </datalist>
       </div>
+      <div id="fplTypeBtns" class="hint"></div>
       <label>Observaciones (RMK/) <input id="rmk" placeholder="automático según la misión"></label>
       <textarea id="fplOut" readonly rows="7"></textarea>
       <div class="grid3">
@@ -336,7 +344,6 @@
 </div>
 <div id="map"></div>
 
-<script src="app/geo.js"></script>
-<script src="app/ui.js"></script>
+<script>load('app/geo.js'); load('app/ui.js');</script>
 </body>
 </html>

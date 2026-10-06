@@ -40,7 +40,7 @@ const GTN_BANK = 17.5;
 function gtnTurns(wps, R) {
   const n = wps.length, P = wps.map(w => w.pos);
   const ang = P.map((q, i) => (i && i < n - 1 ? ((brg(q, P[i + 1]) - brg(P[i - 1], q) + 540) % 360) - 180 : 0));
-  const over = ang.map((a, i) => i > 0 && i < n - 1 && (wps[i].ext || Math.abs(a) > 175));
+  const over = ang.map((a, i) => i > 0 && i < n - 1 && ((wps[i].ext && !wps[i].flyby) || Math.abs(a) > 175));
   const t = ang.map((a, i) => (over[i] || Math.abs(a) < 1 ? 0 : Math.tan(Math.abs(a) / 2 * RAD)));
   // ponytail: reparto por parejas; el GTN encadena la restricción hacia delante (un poco más de sitio en cadenas de tramos cortos)
   return ang.map((a, i) => {
@@ -374,6 +374,8 @@ function buildOne(p) {
   const res = [];
   out.forEach((w, i) => {
     res.push(w);
+    const bulb = i > 0 && w.turn && out[i + 2] ? bulbTurn(out[i - 1].pos, w.pos, out[i + 1].pos, out[i + 2].pos, p.radius) : null;
+    if (bulb) return res.push(...bulb.map((pos, k) => ({ name: w.name.slice(0, 7) + 'G' + (k + 1), pos, turn: false, ext: true, flyby: true })));
     // Solo hay gota si de verdad se gira (el VS pasa recto por el CSP)
     const turnDeg = i > 0 && i < out.length - 1 ? Math.abs((brg(w.pos, out[i + 1].pos) - brg(out[i - 1].pos, w.pos) + 540) % 360 - 180) : 0;
     if (w.turn && turnDeg > 30) res.push({ name: (w.name + 'X').slice(0, 10), pos: proj(w.pos, brg(out[i - 1].pos, w.pos), p.radius), turn: false, ext: true });
@@ -381,6 +383,41 @@ function buildOne(p) {
   res.areaBrg = areaBrg;
   res.areaCells = out.areaCells;
   return res;
+}
+
+// Vuelta a la pasada paralela siguiente (A→E y luego N→M en sentido contrario, a S de lado) con giros de radio r que
+// caben: si S < 2r, «bombilla» (abre α = acos(S/2r) hacia fuera y vuelve con 180°+α en tres giros); si no, dos de 90°
+// con recta entre medias. Sigue recto lo que haga falta para que N quede por delante al terminar, así entra alineado.
+// Devuelve los waypoints fly-by (el GTN los vuela con su radio) o null si N→M no es la pasada contraria.
+function bulbTurn(A, E, N, M, r) {
+  const h = brg(A, E), rel = (brg(E, N) - h) * RAD, d = dist(E, N);
+  if (Math.abs(((brg(N, M) - h + 360) % 360) - 180) > 15) return null; // N→M no va en sentido contrario
+  const along = d * Math.cos(rel), cross = d * Math.sin(rel), s = Math.sign(cross) || 1, S = Math.abs(cross);
+  const a = S < 2 * r ? Math.acos(S / (2 * r)) / RAD : 0;
+  const turns = a ? [-s * a, ...Array(3).fill(s * (180 + a) / 3)] : [s * 90, s * 90];
+  let pos = proj(E, h, Math.max(0, along - (a ? 2 * r * Math.sin(a * RAD) : 0)) + 0.2 * r), hd = h; // +0,2r: un tramo recto antes de entrar en N
+  const out = [pos];
+  turns.forEach((t, k) => {
+    const D = r * Math.tan(Math.abs(t) / 2 * RAD) * 1.01; // 1 % de margen para el redondeo del GTN
+    const wp = proj(pos, hd, D); out.push(wp);
+    hd += t; pos = proj(wp, hd, D + (!a && k === 0 ? S - 2 * r : 0));
+  });
+  return out;
+}
+
+// Distancia (NM) de q a la costa más cercana de los polígonos de tierra [lat, lon, ...]; negativa si q está en tierra.
+// Plano local (lon escalada por el coseno de la latitud): vale para las decenas de NM que se miran.
+function coastDist(q, polys = typeof COAST === 'undefined' ? [] : COAST) {
+  const k = Math.cos(q[0] * RAD);
+  let best = Infinity, land = false;
+  for (const P of polys) for (let i = 0, j = P.length - 2; i < P.length; j = i, i += 2) {
+    const ay = P[j], ax = P[j + 1], by = P[i], bx = P[i + 1];
+    if ((ay > q[0]) !== (by > q[0]) && q[1] < (bx - ax) * (q[0] - ay) / (by - ay) + ax) land = !land;
+    const dx = (bx - ax) * k, dy = by - ay, px = (q[1] - ax) * k, py = q[0] - ay;
+    const t = Math.max(0, Math.min(1, (px * dx + py * dy) / (dx * dx + dy * dy || 1)));
+    best = Math.min(best, Math.hypot(px - t * dx, py - t * dy));
+  }
+  return (land ? -1 : 1) * best * 60;
 }
 
 function dms(dec, isLat) {

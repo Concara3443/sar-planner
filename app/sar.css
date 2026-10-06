@@ -60,7 +60,7 @@ footer .grid2 button { margin:0; }
 #partBox { display:none; margin-bottom:6px; } #partBox.on { display:grid; }
 #stats div { display:flex; justify-content:space-between; padding:1px 0; }
 #warn { color:var(--warn); font-size:12px; margin-top:6px; }
-#msg { font-size:12px; margin-top:6px; word-break:break-word; }
+#msg { font-size:12px; margin-top:6px; word-break:break-word; max-height:22vh; overflow-y:auto; }
 #warn:empty, #msg:empty { display:none; }
 
 /* ---- Mapa: simulación, leyenda, etiquetas ---- */

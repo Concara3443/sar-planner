@@ -5,7 +5,7 @@ const geo = fs.readFileSync(path.join(dir, "data/iamsar.js"), "utf8") + "\n" + f
 for (const f of fs.readdirSync(path.join(dir, "app")).filter(f => f.endsWith(".js"))) // sintaxis de todos los .js
   new Function(fs.readFileSync(path.join(dir, "app", f), "utf8"));
 const g = new Function(geo + `;return {buildPattern, buildPln, departurePosition, sweepWidth, bestAreaRoute, polyAreaM2, splitPlan,
-  icaoCoord, resolveVia, procPoints, bestHeading, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc, driftDatum, leeway, windCurrent, bestEffort}`)();
+  icaoCoord, resolveVia, procPoints, bestHeading, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc, driftDatum, leeway, windCurrent, bestEffort, coastDist}`)();
 const { NM } = g, c = [41.4, 2.0], R = g.turnRadius(120, 25);
 const at = (n, e) => g.proj(g.proj(c, 0, n * NM), 90, e * NM);
 const legStr = w => w.slice(1).map((x, i) => (g.dist(w[i].pos, x.pos) / NM).toFixed(1) + "@" + Math.round(g.brg(w[i].pos, x.pos)));
@@ -44,7 +44,23 @@ assert(!ext.includes("CSP2X") && ext.includes("CSP4X") && ext.includes("V1X"));
 // Crosshatch: la 2ª pasada empieza en la esquina más cercana (sin vuelta de 180°)
 w = g.buildPattern({ ...base, type: "PS", xh: true, hdg: 90, len: 6 * NM, sp: 1.5 * NM, n: 4, radius: R });
 assert(turnsOf(w).every(a => a < 170), "crosshatch sin giros de 180°");
+// Gota en pasadas más juntas que el diámetro de giro: bombilla con todos los giros dentro del radio y entrada alineada
+for (const sp of [0.4, 1, 1.8, 3]) {
+  w = g.buildPattern({ ...base, type: "PS", gota: true, hdg: 0, len: 6 * NM, sp: sp * NM, n: 4, radius: 1 * NM });
+  const t = g.gtnTurns(w, 1 * NM);
+  assert(t.every(x => x.fit > 0.999), `gota S=${sp}: giros que no caben ${w.map((x, i) => x.name + ":" + t[i].fit.toFixed(2))}`);
+  assert(w.filter(x => x.flyby).length >= 2 && turnsOf(w).every(a => a < 125), `gota S=${sp}: forma ${w.map(x => x.name)} ${turnsOf(w).map(Math.round)}`);
+}
 ok("patrones clásicos, gota y crosshatch");
+
+// ---------- Costa (data/costa.js) ----------
+const COAST = new Function(fs.readFileSync(path.join(dir, "data/costa.js"), "utf8") + ";return COAST")();
+const cd = q => g.coastDist(q, COAST);
+assert(cd([40.42, -3.70]) < -100, "Madrid, tierra adentro");
+assert(cd([39.57, 2.65]) < 0, "Palma, en Mallorca");
+const vlc = cd([39.45, -0.25]); assert(vlc > 0 && vlc < 10, "frente a Valencia, cerca de la costa: " + vlc);
+assert(cd([38.5, 4.5]) > 20, "Mediterráneo abierto entre Baleares y Cerdeña");
+ok("costa: tierra, cerca y mar abierto");
 
 // ---------- Plan .pln ----------
 assert.equal(g.departurePosition("P|P|12"), "PARKING NONE 12 PARKING NONE");

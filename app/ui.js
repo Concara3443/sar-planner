@@ -87,6 +87,13 @@ function sarBaseInfo() {
     // «La más cercana» y se ha movido la zona: ofrecer cambiar (no se cambia sola para no pisar lo que hayas tocado)
     + ($('dep').value.trim().toUpperCase() !== b.icao ? ` <button class="sec small" data-set="dep=${b.icao};arr=${b.icao}">Salir y volver a ${b.icao}</button>` : '');
 }
+// Avión en el plan: el real de la base SAR o el que vuelas en el simulador
+function fplTypeBtns() {
+  const b = sarBase(), own = (FPL_EQ[$('acft').value] || FPL_EQ.custom)[0], cur = $('fplType').value.trim().toUpperCase();
+  const btn = (t, txt) => `<button class="small ${cur === t ? '' : 'sec'}" data-set="fplType=${t};fplWake=">${txt}</button>`;
+  $('fplTypeBtns').innerHTML = !b ? '' : 'En el plan: ' + b.u.types.map(t => btn(t, `${t} (real)`)).join(' ') + ' ' + btn('', `${own} (el del simulador)`);
+}
+$('fplTypeBtns').addEventListener('click', e => { if (e.target.dataset?.set !== undefined) applySet(e.target.dataset.set); });
 for (const id of ['sarbaseInfo', 'driftInfo']) $(id).addEventListener('click', e => {
   if (e.target.dataset?.set) applySet(e.target.dataset.set);
   if (e.target.dataset?.best) bestSearch();
@@ -270,6 +277,22 @@ const showD = m => `${(m / unitM()).toLocaleString('es', { maximumFractionDigits
 let wpts = [], lastReds = 0, flight = null, lastTimes = {};
 // Plan actual: vuelos de la división, el que se ve (k), la ruta de ida/vuelta y el patrón completo
 const plan = { parts: [], k: 0, pre: [], post: [], all: [] };
+// Giro que no cabe, como lo vuela el avión: empieza donde el GTN, gira con su radio R (nunca más banco del elegido),
+// se pasa de la línea siguiente (W, rumbo b2) y vuelve a ella con dos giros iguales en S.
+// ponytail: si el siguiente waypoint llega antes de volver a la línea, la línea dibujada recorta hacia él
+function overshootArc(S0, b1, turn, W, b2, R) {
+  const pts = [S0];
+  const arcTo = (pos, hd, t) => {
+    const s = Math.sign(t), C = proj(pos, hd + 90 * s, R), m = Math.max(1, Math.ceil(Math.abs(t) / 10));
+    for (let j = 1; j <= m; j++) pts.push(proj(C, hd - 90 * s + t * j / m, R));
+    return [pts[pts.length - 1], hd + t];
+  };
+  let [P, hd] = arcTo(S0, b1, turn);
+  const cross = dist(W, P) * Math.sin((brg(W, P) - b2) * RAD), s = -Math.sign(cross);
+  const beta = Math.acos(Math.max(-1, 1 - Math.abs(cross) / (2 * R))) / RAD;
+  if (beta > 1) { [P, hd] = arcTo(P, hd, s * beta); arcTo(P, hd, -s * beta); }
+  return pts;
+}
 // Sobrevuelo: desde W (rumbo b1) gira con radio r hacia el lado sgn hasta apuntar a B (o pasarse), en pasos de 10°
 function flyOverArc(W, b1, B, sgn, r) {
   const C = proj(W, b1 + 90 * sgn, r), pts = [];
@@ -307,7 +330,7 @@ function coverage() {
 }
 
 // Deriva: datum al llegar a la zona (lo perdido + el tránsito hasta allí), dibujo en el mapa y botones para usarlo
-let lastDrift = null, lastBest = null; // último datum calculado y último plan de «✨ Mejor patrón»
+let lastDrift = null; // último datum calculado
 function driftView(D, p) {
   lastDrift = null;
   $('driftBox').style.display = $('drift').checked ? '' : 'none';
@@ -326,8 +349,6 @@ function driftView(D, p) {
   L.circleMarker(d.datum, { radius: 6, color: '#111', weight: 1, fillColor: '#4dd0e1', fillOpacity: 1 }).bindTooltip(`Datum (dentro de ${(hours).toFixed(1).replace('.', ',')} h)`).addTo(layer);
   L.circle(d.datum, { ...opt, radius: d.E * NM, dashArray: '2 6' }).addTo(layer);
   L.polygon(sq, { ...opt, fill: false, dashArray: '8 6' }).addTo(layer);
-  if (sim && sim.revealed) L.circleMarker(sim.truth, { radius: 7, color: '#fff', weight: 2, fillColor: '#ff3b3b', fillOpacity: 1 })
-    .bindTooltip('Posición real (simulada)', { permanent: true, direction: 'right' }).addTo(layer);
   const f = v => v.toFixed(1).replace('.', ',');
   $('driftInfo').innerHTML = `Cuando llegues habrán pasado <b>${f(hours)} h</b> (${f(+$('dHours').value)} perdido + ${f(tr)} de tránsito). `
     + `El objeto habrá derivado <b>${f(d.driftNm)} NM hacia el ${String(Math.round(d.driftBrg)).padStart(3, '0')}°</b> `
@@ -350,38 +371,43 @@ function bestSearch() {
   const W = sweepWidth({ craft: $('craft').value, obj: sobj, altFt: +$('alt').value, visNm: +$('vis').value || 10, sea: +$('sea').value,
     pfd: $('pfd').checked, fatigue: $('fat').checked, tas });
   // Tiempo en la zona: autonomía − reserva − ir y volver (estimado en línea recta; luego se mide la ruta de verdad)
-  const legs = ((D ? dist(D.pos, d.datum) : 0) + (A ? dist(d.datum, A.pos) : 0)) / NM / tas, endur = +$('endur').value * 60;
+  const legs = ((D ? dist(D.pos, d.datum) : 0) + (A ? dist(d.datum, A.pos) : 0)) / NM / ((PROFILES[$('acft').value] || {}).cruise || tas), endur = +$('endur').value * 60;
   const avail = endur > 0 ? (endur - (+$('resv').value || 0) * 60) / 3600 : Infinity, hours = avail - legs;
   if (hours < 0.1) { $('msg').innerHTML = `<span style="color:var(--warn)">Con esa autonomía no te queda tiempo en la zona: solo ir y volver son ${Math.round(legs * 60)} min.</span>`; return; }
   const radius = params().radius / NM, minR = 3 * radius; // un área más pequeña que eso no se puede volar con tus giros
   const Smin = 2 * radius / 8, Cmax = W / Smin; // separación mínima volable entrelazando hasta 8 pasadas
   const fit = b => (b.R >= minR ? b : { ...b, R: minR, POC: pocSquare(minR, d.E), POS: pocSquare(minR, d.E) * b.POD });
-  const apply = b => {
-    const type = /^piw|surf|debris/.test(obj) && b.R <= 3 && b.R >= 4 * radius ? 'VS' : b.R <= 6 && b.S >= 2 * radius ? 'SS' : 'AREA';
+  const apply = (b, only) => {
+    // VS: datum preciso y objeto pequeño; el radio crece hasta que caben los giros de 120° (máx. 5 NM)
+    const vsR = Math.max(b.R, 4 * radius);
+    const type = only || (/^piw|surf|debris/.test(obj) && b.R <= 3 && vsR <= 5 ? 'VS' : b.R <= 6 && b.S >= 2 * radius ? 'SS' : 'AREA');
     // Cobertura de la lista → modo SAR; si solo cabe una menor (avión rápido), separación a mano
     if ([0.5, 1, 1.5, 2].includes(b.C)) { if (!$('covSar').checked) $('covSar').click(); $('cf').value = String(b.C); }
     else { if (!$('covMan').checked) $('covMan').click(); $('sp').value = $('spman').value = fmt(b.S * NM / unitM()); }
     $('type').value = type; $('auto').checked = true; $('il').value = 'auto'; $('gota').checked = false;
-    if (type === 'AREA') setArea([45, 135, 225, 315].map(a => proj(d.datum, d.driftBrg + a, b.R * NM * Math.SQRT2)));
+    // Barrido: pasadas paralelas a un lado del cuadrado (en diagonal salen pasadas cortísimas en las esquinas)
+    if (type === 'AREA') { setArea([45, 135, 225, 315].map(a => proj(d.datum, d.driftBrg + a, b.R * NM * Math.SQRT2))); $('auto').checked = false; $('hdg').value = Math.round(d.driftBrg) % 180; }
     else { $('lat').value = d.datum[0].toFixed(5); $('lon').value = d.datum[1].toFixed(5); }
-    if (type === 'VS') $('len').value = fmt(b.R * NM / unitM());
+    if (type === 'VS') $('len').value = fmt(vsR * NM / unitM());
     if (type === 'SS') $('n').value = Math.min(MAX_LEGS, 2 * Math.ceil(2 * b.R / b.S));
     drawAreaHandles(); update();
+    if (hasTurnErrors() && type !== 'AREA') return apply(b, 'AREA'); // VS / SS con giros que no caben: mejor el barrido
     if (hasTurnErrors()) { $('gota').checked = true; update(); } // último recurso: sobrevolar y dar la vuelta (gota)
-    return type;
+    return type === 'VS' ? (b.R = vsR, type) : type;
   };
   // La fórmula del esfuerzo no cuenta giros, tránsitos entre pasadas ni la ruta real (SID/STAR): se mide el vuelo de
   // verdad y, si no cabe en la autonomía, se repite con menos horas en la zona hasta que quepa
   let h = hours, b = fit(bestEffort(d.E, W, tas, h, Cmax)), type = apply(b);
-  for (let k = 0; k < 8 && isFinite(avail) && (lastTimes.pat + lastTimes.tr) / 3600 > avail; k++) {
-    h = Math.max(0.05, h * (avail - lastTimes.tr / 3600) / (lastTimes.pat / 3600) * 0.97);
+  // Todo en una salida: cuenta el patrón entero aunque el GTN lo parta en varios planes
+  for (let k = 0; k < 8 && isFinite(avail) && (lastTimes.patAll + lastTimes.tr) / 3600 > avail; k++) {
+    h = Math.max(0.05, h * (avail - lastTimes.tr / 3600) / (lastTimes.patAll / 3600) * 0.97);
     b = fit(bestEffort(d.E, W, tas, h, Cmax)); type = apply(b);
   }
-  lastBest = b;
   const f = v => v.toFixed(v < 1 ? 2 : 1).replace('.', ','), pc = v => Math.round(v * 100) + ' %';
   const name = { VS: 'Sector (VS) centrado en el datum', SS: 'Cuadrado expansivo (SS) desde el datum', AREA: 'Barrido del área alrededor del datum' }[type];
-  $('msg').innerHTML = `✨ <b>${name}</b>: ${type === 'VS' ? `radio ${f(b.R)} NM` : `${f(2 * b.R)} × ${f(2 * b.R)} NM`}, S = ${f(b.S)} NM, cobertura ${String(+b.C.toFixed(2)).replace('.', ',')}`
-    + ` (${isFinite(hours) ? `el patrón dura ${Math.round(lastTimes.pat / 60)} min y el vuelo completo ${Math.round((lastTimes.pat + lastTimes.tr) / 60)} de los ${Math.round(avail * 60)} que tienes` : 'primera búsqueda; pon tu autonomía para ajustarlo a tu tiempo'}).`
+  $('msg').innerHTML = '';
+  $('bestInfo').innerHTML = `✨ <b>${name}</b>: ${type === 'VS' ? `radio ${f(b.R)} NM` : `${f(2 * b.R)} × ${f(2 * b.R)} NM`}, S = ${f(b.S)} NM, cobertura ${String(+b.C.toFixed(2)).replace('.', ',')}`
+    + ` (${isFinite(hours) ? `el patrón dura ${Math.round(lastTimes.patAll / 60)} min y el vuelo completo ${Math.round((lastTimes.patAll + lastTimes.tr) / 60)} de los ${Math.round(avail * 60)} que tienes` : 'primera búsqueda; pon tu autonomía para ajustarlo a tu tiempo'}).`
     + `<br>Probabilidad de encontrarlo: está dentro ${pc(b.POC)} × lo ves si está ${pc(b.POD)} = <b>${pc(b.POS)}</b>.`
     + (b.C < 0.5 ? `<br><span style="color:var(--warn)">Con tu velocidad no se pueden volar pasadas más juntas de ${f(Smin)} NM: para este objeto, mejor un helicóptero o volar más despacio.</span>` : '')
     + ($('gota').checked ? '<br>Algunos giros no caben ni entrelazando: se ha activado la gota (sobrevuela y da la vuelta).' : '');
@@ -393,9 +419,25 @@ function bestSearch() {
 // cerca de la salida. Luego aplica ✨ (velocidad y altitud) y, en búsqueda, ✨ Mejor patrón.
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pickW = list => { let r = Math.random() * list.reduce((t, [, w]) => t + w, 0); return list.find(([, w]) => (r -= w) < 0)[0]; };
-let sim = null; // { truth, revealed } del caso simulado
-// ponytail: sin línea de costa, «mar» = hacia el lado contrario a los aeropuertos cercanos y a más de 12 NM de cualquiera
+// Mar abierto (a más de 20 NM de la costa, donde vale la corriente por viento): todos los puntos de una cuadrícula
+// del anillo minD–maxD alrededor de la base que estén en el mar y a ≥ 20 NM de tierra (data/costa.js); uno al azar.
+// Si no hay ninguno, el punto de mar más alejado de la costa.
 function seaPoint(base, minD, maxD) {
+  if (!COAST.length) return seaGuess(base, minD, maxD);
+  const step = Math.max(2, maxD / 40), ok = [];
+  let best = null;
+  for (let y = -maxD; y <= maxD; y += step) for (let x = -maxD; x <= maxD; x += step) {
+    const r = Math.hypot(x, y);
+    if (r < minD || r > maxD) continue;
+    const q = proj(base, Math.atan2(x, y) / RAD, r * NM), c = coastDist(q);
+    if (c < 0) continue;
+    if (c >= 20) ok.push(q);
+    if (!best || c > best.c) best = { q, c };
+  }
+  return ok.length ? ok[Math.floor(Math.random() * ok.length)] : best ? best.q : seaGuess(base, minD, maxD);
+}
+// ponytail: sin data/costa.js, «mar» = hacia el lado contrario a los aeropuertos cercanos y a más de 12 NM de cualquiera
+function seaGuess(base, minD, maxD) {
   const near = Object.values(DB).filter(a => dist(base, [a[1], a[2]]) < 60 * NM);
   const land = near.reduce(([n, e], a) => { const b = brg(base, [a[1], a[2]]) * RAD; return [n + Math.cos(b), e + Math.sin(b)]; }, [0, 0]);
   const sea = Math.atan2(land[1], land[0]) / RAD + 180;
@@ -406,7 +448,7 @@ function seaPoint(base, minD, maxD) {
   }
   return q;
 }
-function simulate() {
+async function simulate() {
   const prof = PROFILES[$('acft').value] || PROFILES.custom, heli = prof.craft === 'heli';
   const endurH = +$('endur').value / 60 || prof.endur || 4, cruise = prof.cruise || +$('tas').value || 120;
   const mode = prof.sar && prof.photo ? (Math.random() < 0.6 ? 'sar' : 'cam') : prof.photo ? 'cam' : 'sar';
@@ -414,29 +456,32 @@ function simulate() {
   if (prof.search) $('tas').value = prof.search;
   if (!$('wreal').checked) { $('wdir').value = 10 * Math.floor(rnd(0, 36)); $('wkt').value = Math.round(rnd(4, 25)); }
   $('vis').value = Math.round(rnd(3, 20)); $('sea').value = +$('wkt').value < 15 ? '0' : +$('wkt').value < 25 ? '1' : '2';
-  sim = null; lastBest = null;
   if (mode === 'sar') {
-    const bases = sarOpts().filter(b => DB[b.icao] && (heli || DB[b.icao][6] === 'A') && b.icao !== 'LECU');
+    const bases = sarOpts().filter(b => DB[b.icao] && (heli ? !b.u.plane : b.u.plane || b.unit === 'eda') && b.icao !== 'LECU');
     const b = bases[Math.floor(Math.random() * bases.length)];
     $('sarbase').value = String(b.i); $('sarbase').dispatchEvent(new Event('change'));
-    const lkp = seaPoint(apt(b.icao).pos, 10, Math.min(heli ? 120 : 350, cruise * endurH * 0.3));
-    const obj = pickW([['piwS', 3], ['piw', 2], ['piwSuit', 1], ['raftDB46', 3], ['raftNBc', 2], ['raftDB1525', 1], ['refugee', 1], ['kayak', 1],
-      ['windsurf', 1], ['skiffV', 2], ['sport', 2], ['fisher', 1], ['sailFin', 2], ['fv', 2]]);
+    const obj = pickW(heli ? [['piwS', 3], ['piw', 2], ['piwSuit', 1], ['raftDB46', 3], ['raftNBc', 2], ['raftDB1525', 1], ['refugee', 1], ['kayak', 1],
+      ['windsurf', 1], ['skiffV', 2], ['sport', 2], ['fisher', 1], ['sailFin', 2], ['fv', 2]]
+      : [['fv', 3], ['fisher', 2], ['sport', 2], ['sailFin', 2], ['sailFull', 1], ['freighter', 1], ['refugee', 2], ['raftDB1525', 2], ['raftAvi', 2], ['slide', 1]]);
     if (!$('covSar').checked) $('covSar').click();
-    $('drift').checked = true; $('lkpLat').value = lkp[0].toFixed(4); $('lkpLon').value = lkp[1].toFixed(4);
-    $('dObj').value = obj; $('dHours').value = rnd(0.5, heli ? 4 : 10).toFixed(1);
+    $('drift').checked = true; $('dWc').checked = true; $('dObj').value = obj; $('dHours').value = (Math.random() < 0.35 ? rnd(0.2, 1) : rnd(1, heli ? 4 : 10)).toFixed(1);
     $('dX').value = String(pickW([[0.1, 4], [1, 1], [3, 2], [5, 1], [15, 1]]));
-    $('sobj').value = LEEWAY_SWEEP[obj]; $('lat').value = $('lkpLat').value; $('lon').value = $('lkpLon').value;
-    update(); computeIdeal(); bestSearch();
+    $('sobj').value = LEEWAY_SWEEP[obj];
+    // Distancia: lo normal, que ir y volver no dure más que el patrón (ida ≈ 22 % del tiempo de vuelo);
+    // un 35 % de las veces, un caso lejano. Si aun así el tránsito pasa al patrón, se prueba más cerca (hasta 3 veces).
+    const far = Math.random() < 0.35, availH = endurH - (+$('resv').value || 0) / 60;
+    let maxD = Math.max(50, Math.min(heli ? 120 : 350, cruise * availH * (far ? 0.35 : 0.22)));
+    for (let k = 0; k < 3; k++) {
+      const lkp = seaPoint(apt(b.icao).pos, 25, maxD);
+      $('lkpLat').value = $('lat').value = lkp[0].toFixed(4); $('lkpLon').value = $('lon').value = lkp[1].toFixed(4);
+      update(); computeIdeal(); bestSearch();
+      if (far || !lastDrift || lastTimes.tr <= lastTimes.patAll) break;
+      maxD = Math.max(50, maxD / 2);
+    }
     if (!lastDrift) return;
-    // Posición real: uno de los dos datums (50 %) más un error normal circular con su error probable
-    const d = lastDrift.d, sg = (d.E - dist(d.dL, d.dR) / NM / 2) / 1.1774;
-    const g = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
-    const n = g() * sg, e = g() * sg, from = Math.random() < 0.5 ? d.dL : d.dR;
-    sim = { truth: proj(from, Math.atan2(e, n) / RAD, Math.hypot(n, e) * NM), revealed: false };
-    $('msg').innerHTML = `🎲 <b>Caso simulado</b> desde ${b.where} (${b.icao}): ${$('dObj').selectedOptions[0].text.toLowerCase()}, perdido hace `
+    $('simInfo').innerHTML = `🎲 <b>Caso simulado</b> desde ${b.where} (${b.icao}): ${$('dObj').selectedOptions[0].text.toLowerCase()}, perdido hace `
       + `${$('dHours').value.replace('.', ',')} h, posición ${$('dX').selectedOptions[0].text.toLowerCase()}, viento ${$('wdir').value}°/${$('wkt').value} kt, `
-      + `visibilidad ${$('vis').value} NM.<br>${$('msg').innerHTML}<br><button class="sec small" id="simReveal">👁 ¿Dónde estaba de verdad?</button>`;
+      + `visibilidad ${$('vis').value} NM.`;
   } else {
     const dep = apt($('dep').value.trim().toUpperCase()) || apt(nearestApt([+$('lat').value, +$('lon').value]).icao);
     const c = proj(dep.pos, rnd(0, 360), rnd(5, Math.max(6, Math.min(40, cruise * endurH * 0.15))) * NM), r = rnd(0.8, heli ? 2 : 5) * 1000;
@@ -450,7 +495,7 @@ function simulate() {
     $('gota').checked = false; $('gsd').dispatchEvent(new Event('change'));
     drawAreaHandles(); update(); computeIdeal();
     if (hasTurnErrors()) { $('gota').checked = true; update(); }
-    $('msg').innerHTML = `🎲 <b>Encargo simulado</b>: fotografiar ${(polyAreaM2(areaPts()) / 1e6).toFixed(1).replace('.', ',')} km² a `
+    $('simInfo').innerHTML = `🎲 <b>Encargo simulado</b>: fotografiar ${(polyAreaM2(areaPts()) / 1e6).toFixed(1).replace('.', ',')} km² a `
       + `${gsdTxt} con ${$('ov').value} % de solape, saliendo de ${$('dep').value}. El plan ya está calculado`
       + `${$('gota').checked ? ' (con gota: el área es pequeña para tus giros)' : ''}.`;
   }
@@ -458,23 +503,6 @@ function simulate() {
   if (lay.length) map.fitBounds(L.featureGroup(lay).getBounds(), { padding: [30, 30] });
 }
 $('sim').onclick = simulate;
-// Revelar la posición real del caso simulado: ¿estaba en la zona buscada? ¿lo habrías visto?
-$('msg').addEventListener('click', e => {
-  if (e.target.id !== 'simReveal' || !sim) return;
-  sim.revealed = true; update();
-  const p = params(), t = sim.truth, poly = p.type === 'AREA' ? p.area : null;
-  let inside = false;
-  if (poly) for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [yi, xi] = poly[i], [yj, xj] = poly[j];
-    if ((yi > t[0]) !== (yj > t[0]) && t[1] < (xj - xi) * (t[0] - yi) / (yj - yi) + xi) inside = !inside;
-  }
-  else inside = dist(t, p.csp) <= (p.type === 'VS' ? p.len : (p.n / 4) * p.sp);
-  const pod = lastBest ? lastBest.POD : 1 - Math.exp(-(+$('cf').value || 1)), found = inside && Math.random() < pod;
-  e.target.outerHTML = `👁 Estaba a ${(dist(t, lastDrift ? lastDrift.d.datum : p.csp) / NM).toFixed(1).replace('.', ',')} NM del datum, `
-    + (inside ? `<b>dentro</b> de la zona: con esta cobertura lo verías con un ${Math.round(pod * 100)} % de probabilidad → `
-      + (found ? '<b style="color:var(--ok)">¡encontrado!</b>' : '<b style="color:var(--warn)">pasaste sin verlo</b> (habría que repetir la búsqueda)')
-      : '<b style="color:var(--warn)">fuera</b> de la zona buscada: tocaba ampliar el área en la siguiente búsqueda.');
-});
 $('lkpCsp').onclick = () => { $('lkpLat').value = $('lat').value; $('lkpLon').value = $('lon').value; update(); };
 function update() {
   fillProcs(); // salida/destino pueden cambiar por código (base SAR, botones, mapa): listas de SID/STAR al día
@@ -560,7 +588,7 @@ function update() {
        bad.length && `<span class="via-bad">No encontrado: ${bad.join(' ')} (¿está en tu región? vuelve a exportar los datos)</span>`].filter(Boolean).join('<br>')
     : 'Sin procedimientos ni puntos intermedios: se vuela directo de la salida a la zona y de vuelta.';
   $('depName').textContent = D ? D.name : 'Aeropuerto no encontrado';
-  sarBaseInfo();
+  sarBaseInfo(); fplTypeBtns();
   $('arrName').textContent = A ? A.name : 'Aeropuerto no encontrado';
   // Plan = lo que se guarda en el GTN: línea amarilla fina punto a punto (tránsitos discontinuos)
   L.polyline([...(D ? [D.pos] : []), ...pre.map(q => q.pos), route[0]], { color: '#ffd23f', weight: 1.5, dashArray: '5 6', opacity: .9 }).addTo(layer);
@@ -603,7 +631,8 @@ function update() {
       continue;
     }
     const C = proj(proj(W, b1 + 180, D), b1 + 90 * sgn, r);
-    for (let j = 0; j <= m; j++) arc.push(proj(C, b1 - 90 * sgn + sgn * ad * j / m, r));
+    if (fit < 1 - 1e-6) arc.push(...overshootArc(proj(W, b1 + 180, D), b1, sgn * ad, W, brg(W, B), p.radius));
+    else for (let j = 0; j <= m; j++) arc.push(proj(C, b1 - 90 * sgn + sgn * ad * j / m, r));
     path.push(...arc);
     if (ad > WIDE) { // giro anticipado tan cerrado que el avión pasa lejos del waypoint
       const cut = r / Math.cos(ad / 2 * RAD) - r;
@@ -614,7 +643,7 @@ function update() {
     if (fit < 1 - 1e-6) {
       minFit = Math.min(minFit, fit);
       reds.push(L.polyline(arc, { pane: 'trail', color: '#ff3b3b', weight: 5 })
-        .bindTooltip(`Este giro no cabe: el GTN750 lo dibuja con radio ${showD(r)} en vez de ${showD(p.radius)} y el avión se pasa`));
+        .bindTooltip(`Este giro no cabe: el GTN750 lo dibuja con radio ${showD(r)}, pero con el banco elegido el avión gira con ${showD(p.radius)}, se pasa y vuelve a la línea (así se dibuja)`));
     }
   }
   path.push(R[R.length - 1].pos);
@@ -654,13 +683,16 @@ function update() {
   const len = pts => pts.reduce((a, q, i) => (i ? a + dist(pts[i - 1], q) : 0), 0);
   const secs = pts => (tas ? pathTime(pts, tas, wind) : NaN);
   const outP = path.slice(0, patStart + 1), patP = path.slice(patStart, patEnd + 1), backP = path.slice(patEnd);
-  const tot = len(patP), transit = len(outP) + len(backP), tPat = secs(patP), tTr = secs(outP) + secs(backP);
+  // Tránsito a la velocidad de crucero del perfil (como en el FPL); el patrón, a la TAS de búsqueda
+  const crKt = (PROFILES[$('acft').value] || {}).cruise || tas, secsCr = pts => (crKt ? pathTime(pts, crKt, wind) : NaN);
+  const tot = len(patP), transit = len(outP) + len(backP), tPat = secs(patP), tTr = secsCr(outP) + secsCr(backP);
   const min = sec => {
     if (!isFinite(sec)) return '—';
     const m = Math.round(sec / 60);
     return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
   };
-  lastTimes = { pat: tPat, tr: tTr };
+  // patAll: el patrón entero aunque el GTN lo divida en vuelos (escalado por las rectas: los giros pesan parecido)
+  lastTimes = { pat: tPat, tr: tTr, patAll: plan.parts.length > 1 ? tPat * secs(allW.map(w => w.pos)) / secs(wpts.map(w => w.pos)) : tPat };
   // Autonomía: con la reserva final, ¿llegas, completas el plan y vuelves? Si no, punto de no retorno (PNR):
   // el último punto del recorrido desde el que aún puedes volver directo al destino.
   const endur = +$('endur').value * 60, avail = endur - (+$('resv').value || 0) * 60;
@@ -709,7 +741,7 @@ function update() {
     return fixBtn(`S = ${minS} ${$('unit').value}`, `sp=${minS}`);
   };
   let warn = '';
-  if (['PS', 'CS', 'TSR', 'AREA'].includes(p.type) && (p.il === '1' || p.type === 'TSR') && 2 * p.radius > p.sp) {
+  if (['PS', 'CS', 'TSR', 'AREA'].includes(p.type) && (p.il === '1' || p.type === 'TSR') && !p.gota && 2 * p.radius > p.sp) {
     const g = 9.81, bank = +$('bank').value, wkt = p.wind.kt || 0;
     const maxTas = Math.floor(Math.sqrt(g * Math.tan(Math.min(bank, GTN_BANK) * RAD) * p.sp / 2) / 0.514444 - wkt);
     const minBank = Math.ceil(Math.atan(((tas + wkt) * 0.514444) ** 2 / (g * p.sp / 2)) / RAD);
