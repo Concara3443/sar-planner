@@ -1,0 +1,8 @@
+#!/bin/sh
+# Si el commit cambia algo de app/ o data/, sube la versión V de sar.html (?v=V en cada .js/.css) para que el navegador
+# y Cloudflare no sirvan copias viejas. Si ya la has subido a mano en este commit, no hace nada.
+# ponytail: añade sar.html entero al commit (si tenías cambios a medio preparar en él, entran también)
+if git diff --cached --name-only | grep -qE '^(app|data)/' && ! git diff --cached -U0 -- sar.html | grep -q '^+const V = '; then
+  v=$(sed -n 's/^const V = \([0-9]*\),.*/\1/p' sar.html)
+  sed -i "s/^const V = $v,/const V = $((v + 1)),/" sar.html && git add sar.html && echo "pre-commit: versión de sar.html $v -> $((v + 1))"
+fi
