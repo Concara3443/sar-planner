@@ -267,6 +267,17 @@
         <label>Operador (OPR/) <input id="opr" placeholder="p. ej. SALVAMENTO MARITIMO"></label>
         <label>Equipo (casilla 10) <input id="equip" placeholder="auto según avión"></label>
       </div>
+      <div class="grid2">
+        <label>Avión en el plan (tipo ICAO) <input id="fplType" list="fplTypes" maxlength="4" placeholder="el que vuelas"
+          title="Vacío: el avión que vuelas. Escribe otro tipo para presentarlo como si fuera ese (p. ej. A139, el AW139 de Salvamento Marítimo)"></label>
+        <label>Estela <select id="fplWake"><option value="">Auto</option><option value="L">L · ligera</option><option value="M">M · media</option><option value="H">H · pesada</option></select></label>
+        <datalist id="fplTypes">
+          <option value="A139">AW139 (Helimer, Salvamento Marítimo)</option><option value="EC25">EC-225 (Helimer 401)</option>
+          <option value="AS32">Super Puma (Ejército del Aire)</option><option value="NH90">NH90 (Escuadrón 803)</option>
+          <option value="CN35">CN-235 (Sasemar, D.4 VIGMA)</option><option value="C295">C295 (patrulla marítima)</option>
+          <option value="C30J">C-130J / HC-130J (USCG)</option><option value="H60">MH-60 / HH-60</option>
+        </datalist>
+      </div>
       <label>Observaciones (RMK/) <input id="rmk" placeholder="automático según la misión"></label>
       <textarea id="fplOut" readonly rows="7"></textarea>
       <div class="grid3">

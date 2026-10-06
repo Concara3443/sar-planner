@@ -139,11 +139,11 @@ function fillPositions(keep) {
 
 // ---------- Estado de los campos ----------
 const FIELDS = ['type', 'lat', 'lon', 'hdg', 'unit', 'len', 'sp', 'n', 'dir', 'vs2', 'xh', 'tas', 'bank', 'alt', 'gota', 'wdir', 'wkt', 'walign', 'wreal', 'acft', 'il', 'auto', 'area', 'trail', 'cov', 'spman', 'sobj', 'pfd', 'craft', 'vis', 'sea', 'cf', 'fat', 'fov', 'ov', 'agl', 'px', 'dep', 'park', 'arr', 'fname', 'cruise', 'sid', 'star', 'viaOut', 'viaBack',
-  'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'sarbase', 'rwyDep', 'rwyArr',
+  'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'fplType', 'fplWake', 'sarbase', 'rwyDep', 'rwyArr',
   'endur', 'resv', 'drift', 'lkpLat', 'lkpLon', 'dObj', 'dHours', 'dX', 'dWc', 'dCdir', 'dCkt'];
 const DIST = ['len', 'sp', 'spman'];
 const DEFAULTS = { type: 'PS', lat: 41.392957, lon: 1.944372, hdg: 45, unit: 'NM', dir: '1', vs2: false, gota: false, acft: 'custom', wdir: 0, wkt: 0, walign: false, wreal: false, il: '1', auto: true, area: '', trail: true, cov: 'sar', spman: '', sobj: 'Raft 6 person', pfd: false, craft: 'plane', vis: 10, sea: '0', cf: '1', fat: false, fov: 54, ov: 30, agl: '', px: 6000, cruise: '', sid: 'auto', star: 'auto', viaOut: '', viaBack: '',
-                   cs: 'ECGCM', rules: 'I', ftype: 'X', eobt: '', altn: '', sts: '', opr: '', equip: '', rmk: '', sarbase: '', rwyDep: '', rwyArr: '',
+                   cs: 'ECGCM', rules: 'I', ftype: 'X', eobt: '', altn: '', sts: '', opr: '', equip: '', rmk: '', fplType: '', fplWake: '', sarbase: '', rwyDep: '', rwyArr: '',
                    endur: '', resv: 30, drift: false, lkpLat: '', lkpLon: '', dObj: 'piw', dHours: 2, dX: '0.1', dWc: true, dCdir: 0, dCkt: 0,
                    dep: 'LELL', park: '', arr: 'LELL', fname: 'fpl', ...STD_COMMON, ...STD.PS };
 const fmt = v => +(+v).toFixed(3);
@@ -982,6 +982,8 @@ const FPL_EQ = {
   uh1:      ['UH1', 'L', 'SY', 'S', '', '', 290],
   r66:      ['R66', 'L', 'SGY', 'S', '', '', 70],
 };
+// Estela de los tipos sugeridos en «Avión en el plan» (peso máximo: L < 7 t ≤ M < 136 t)
+const TYPE_WAKE = { A139: 'L', EC25: 'M', AS32: 'M', NH90: 'M', CN35: 'M', C295: 'M', C30J: 'M', H60: 'M' };
 const clean18 = t => t.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9 ./-]/g, ' ').replace(/\s+/g, ' ').trim();
 // Observaciones automáticas según lo que se hace
 function autoRmk() {
@@ -1006,8 +1008,10 @@ function fplFields() {
   const eobt = /^\d{4}$/.test($('eobt').value) ? $('eobt').value
     : String(eobtAuto.getUTCHours()).padStart(2, '0') + String(eobtAuto.getUTCMinutes()).padStart(2, '0');
   const cs = clean18($('cs').value).replace(/ /g, '') || 'ZZZZZ', equip = clean18($('equip').value).replace(/ /g, '') || eq[2];
+  const actype = clean18($('fplType').value).replace(/ /g, '').slice(0, 4) || eq[0];
   return {
-    callsign: cs, rules: $('rules').value, ftype: $('ftype').value, actype: eq[0], wake: eq[1], equip, surv: eq[3],
+    // Tipo del plan: el del avión que vuelas o el que escribas (como si fuera ese); estela la elegida, la conocida o la del perfil
+    callsign: cs, rules: $('rules').value, ftype: $('ftype').value, actype, wake: $('fplWake').value || (actype === eq[0] ? eq[1] : TYPE_WAKE[actype] || eq[1]), equip, surv: eq[3],
     dep, eobt, dest: arr, altn: clean18($('altn').value), sid,
     cruiseKt: prof.cruise || +$('tas').value, // tránsito a velocidad de crucero; la búsqueda, a la TAS de búsqueda
     cruiseFt: +$('cruise').value || +$('alt').value, patKt: +$('tas').value, patFt: +$('alt').value,
