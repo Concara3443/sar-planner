@@ -45,6 +45,8 @@ const UNIT_STEP = { NM: 0.1, km: 0.1, m: 50 };
 // ---------- Aeropuertos ----------
 const FALLBACK = { LELL: ['Sabadell', 41.520832, 2.105, 468, [], ['13', '31']] };
 const DB = typeof AIRPORTS_DB === 'object' && Object.keys(AIRPORTS_DB).length ? AIRPORTS_DB : FALLBACK;
+// Viento real descargado (open-meteo) y METAR de la salida
+const WX = { key: null, at: 0, data: null, metar: '', metarFor: '', busy: false, timer: 0, err: '' };
 const apt = icao => { const a = DB[icao]; return a ? { name: a[0], pos: [a[1], a[2]], alt: a[3], parks: a[4], rwys: a[5] } : null; };
 
 function nearestApt(pos) {
@@ -92,14 +94,36 @@ $('apts').innerHTML = Object.entries(DB).map(([k, a]) => `<option value="${k}">$
 
 const NAVDB = typeof NAV_DB === 'object' && NAV_DB.nav ? NAV_DB : { nav: {}, proc: {} };
 // SID de la salida y STAR del destino (de la base de datos de Little Navmap)
-function fillProcs(keepSid = $('sid').value, keepStar = $('star').value) {
-  const opts = (apt, type, none) => ['<option value="">' + none + '</option>',
-    ...Object.keys(NAVDB.proc[apt]?.[type] || {}).sort().map(k => `<option value="${k}">${k.replace(' ', ' · pista ')}</option>`)].join('');
+// Viento en superficie para elegir pista: el METAR si es de ese aeropuerto; si no, el de los campos de viento
+function surfWind(icao) {
+  const x = WX.metarFor === icao && /\b(\d{3})(\d{2,3})(?:G\d{2,3})?KT\b/.exec(WX.metar || '');
+  return x ? { dir: +x[1], kt: +x[2] } : { dir: +$('wdir').value, kt: +$('wkt').value };
+}
+// Pista de la ruta: la elegida o, en «Auto», la de más viento de cara (null = cualquiera)
+function routeRwy(icao, sel) {
+  if (sel) return sel;
+  const a = apt(icao), w = surfWind(icao);
+  return a ? windRunway(a.rwys, w.dir, w.kt, DB[icao][7] || 0) : null;
+}
+// Listas de pista, SID y STAR. Las SID/STAR se filtran por la pista; «✨» elige la mejor hacia la zona en update()
+function fillProcs(keepSid = $('sid').value, keepStar = $('star').value, keepDep = $('rwyDep').value, keepArr = $('rwyArr').value) {
   const dep = $('dep').value.trim().toUpperCase(), arr = $('arr').value.trim().toUpperCase();
-  $('sid').innerHTML = opts(dep, 'SID', NAVDB.proc[dep] ? '— sin SID (directo) —' : '— este aeropuerto no tiene SID —');
-  $('star').innerHTML = opts(arr, 'STAR', NAVDB.proc[arr] ? '— sin STAR (directo) —' : '— este aeropuerto no tiene STAR —');
-  $('sid').value = keepSid; if ($('sid').value !== keepSid) $('sid').value = '';
-  $('star').value = keepStar; if ($('star').value !== keepStar) $('star').value = '';
+  const setSel = (id, html, keep, fallback = '') => { $(id).innerHTML = html; $(id).value = keep; if ($(id).value !== keep) $(id).value = $(id).querySelector(`[value="${fallback}"]`) ? fallback : ''; };
+  for (const [id, icao, keep] of [['rwyDep', dep, keepDep], ['rwyArr', arr, keepArr]]) {
+    const r = routeRwy(icao, '');
+    setSel(id, `<option value="">Auto${r ? ` (${r} por el viento)` : ' (cualquiera)'}</option>`
+      + (apt(icao)?.rwys || []).map(x => `<option value="${x}">${x}</option>`).join(''), keep);
+  }
+  const opts = (icao, type, rwy, none) => {
+    const keys = Object.keys(NAVDB.proc[icao]?.[type] || {});
+    const ok = keys.filter(k => procRwyOk(k, rwy)).sort();
+    return [`<option value="">${!keys.length ? `— este aeropuerto no tiene ${type} —` : `— sin ${type} (directo) —`}</option>`,
+      ...(ok.length ? [`<option value="auto">✨ La mejor hacia la zona</option>`] : []),
+      ...ok.map(k => `<option value="${k}">${k.replace(' ', ' · pista ')}</option>`)].join('');
+  };
+  // Si la SID elegida no vale para la nueva pista, pasa a «la mejor» en vez de quedarse sin ninguna
+  setSel('sid', opts(dep, 'SID', routeRwy(dep, $('rwyDep').value)), keepSid, 'auto');
+  setSel('star', opts(arr, 'STAR', routeRwy(arr, $('rwyArr').value)), keepStar, 'auto');
 }
 function fillPositions(keep) {
   const a = apt($('dep').value.trim().toUpperCase());
@@ -115,10 +139,10 @@ function fillPositions(keep) {
 
 // ---------- Estado de los campos ----------
 const FIELDS = ['type', 'lat', 'lon', 'hdg', 'unit', 'len', 'sp', 'n', 'dir', 'vs2', 'xh', 'tas', 'bank', 'alt', 'gota', 'wdir', 'wkt', 'walign', 'wreal', 'acft', 'il', 'auto', 'area', 'trail', 'cov', 'spman', 'sobj', 'pfd', 'craft', 'vis', 'sea', 'cf', 'fat', 'fov', 'ov', 'agl', 'px', 'dep', 'park', 'arr', 'fname', 'cruise', 'sid', 'star', 'viaOut', 'viaBack',
-  'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'sarbase'];
+  'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'sarbase', 'rwyDep', 'rwyArr'];
 const DIST = ['len', 'sp', 'spman'];
-const DEFAULTS = { type: 'PS', lat: 41.392957, lon: 1.944372, hdg: 45, unit: 'NM', dir: '1', vs2: false, gota: false, acft: 'custom', wdir: 0, wkt: 0, walign: false, wreal: false, il: '1', auto: true, area: '', trail: true, cov: 'sar', spman: '', sobj: 'Raft 6 person', pfd: false, craft: 'plane', vis: 10, sea: '0', cf: '1', fat: false, fov: 54, ov: 30, agl: '', px: 6000, cruise: '', sid: '', star: '', viaOut: '', viaBack: '',
-                   cs: 'ECGCM', rules: 'I', ftype: 'X', eobt: '', altn: '', sts: '', opr: '', equip: '', rmk: '', sarbase: '',
+const DEFAULTS = { type: 'PS', lat: 41.392957, lon: 1.944372, hdg: 45, unit: 'NM', dir: '1', vs2: false, gota: false, acft: 'custom', wdir: 0, wkt: 0, walign: false, wreal: false, il: '1', auto: true, area: '', trail: true, cov: 'sar', spman: '', sobj: 'Raft 6 person', pfd: false, craft: 'plane', vis: 10, sea: '0', cf: '1', fat: false, fov: 54, ov: 30, agl: '', px: 6000, cruise: '', sid: 'auto', star: 'auto', viaOut: '', viaBack: '',
+                   cs: 'ECGCM', rules: 'I', ftype: 'X', eobt: '', altn: '', sts: '', opr: '', equip: '', rmk: '', sarbase: '', rwyDep: '', rwyArr: '',
                    dep: 'LELL', park: '', arr: 'LELL', fname: 'fpl', ...STD_COMMON, ...STD.PS };
 const fmt = v => +(+v).toFixed(3);
 const unitM = () => UNIT_M[$('unit').value];
@@ -136,11 +160,11 @@ let saved = {};
 try { saved = JSON.parse(localStorage.getItem('sarPlanner2') || '{}'); } catch {}
 for (const f of FIELDS) {
   const v = saved[f] ?? DEFAULTS[f];
-  if (f === 'park' || f === 'sid' || f === 'star') continue;
+  if (['park', 'sid', 'star', 'rwyDep', 'rwyArr'].includes(f)) continue;
   $(f).type === 'checkbox' ? ($(f).checked = v) : ($(f).value = v);
 }
 fillPositions(saved.park ?? '');
-fillProcs(saved.sid ?? '', saved.star ?? '');
+fillProcs(saved.sid ?? DEFAULTS.sid, saved.star ?? DEFAULTS.star, saved.rwyDep ?? '', saved.rwyArr ?? '');
 
 // ---------- Mapa ----------
 const map = L.map('map').setView([+$('lat').value, +$('lon').value], 10);
@@ -314,11 +338,20 @@ function update() {
   // Aeródromo VFR (p. ej. LELL) con tránsito IFR: se pasa a IFR sobre su punto (SLL a 3500 ft) y se cancela en él al volver (2000 ft)
   const transitIfr = ['I', 'Y'].includes($('rules').value);
   const gate = (g, ft, kind) => { const q = g && resolveVia(g.fix, NAVDB.nav, apt(kind === 'dep' ? dep : arr)?.pos).pts[0]; return q ? [{ ...q, alt: ft, gate: kind }] : []; };
-  const gD = transitIfr && !$('sid').value ? VFR_GATES[dep] : null, gA = transitIfr && !$('star').value ? VFR_GATES[arr] : null;
+  // SID/STAR: la elegida o, con «✨», la que hace más corto el camino entre el aeropuerto y la zona por la pista en servicio
+  const zone = p.type === 'AREA' && p.area.length >= 3 ? p.area.reduce(([a, b], [x, y]) => [a + x / p.area.length, b + y / p.area.length], [0, 0]) : p.csp;
+  const procKey = (id, icao, type, rwyId, a, b) => {
+    if ($(id).value !== 'auto') return $(id).value;
+    const k = a && b ? bestProc(NAVDB.proc, icao, type, routeRwy(icao, $(rwyId).value), a, b) : '';
+    $(id).querySelector('[value=auto]').textContent = k ? `✨ La mejor: ${k.replace(' ', ' · pista ')}` : '✨ La mejor hacia la zona';
+    return k;
+  };
+  const sidKey = procKey('sid', dep, 'SID', 'rwyDep', D?.pos, zone), starKey = procKey('star', arr, 'STAR', 'rwyArr', zone, A?.pos);
+  const gD = transitIfr && !sidKey ? VFR_GATES[dep] : null, gA = transitIfr && !starKey ? VFR_GATES[arr] : null;
   const viaOut = vOut.pts.filter((q, i) => !(gD && i === 0 && q.name === gD.fix));
   const viaBack = vBack.pts.filter((q, i, a) => !(gA && i === a.length - 1 && q.name === gA.fix));
-  const pre = [...procPoints(NAVDB.proc, dep, 'SID', $('sid').value), ...(gD ? gate(gD, gD.depFt, 'dep') : []), ...viaOut];
-  const post = [...viaBack, ...(gA ? gate(gA, gA.arrFt, 'arr') : []), ...procPoints(NAVDB.proc, arr, 'STAR', $('star').value)];
+  const pre = [...procPoints(NAVDB.proc, dep, 'SID', sidKey), ...(gD ? gate(gD, gD.depFt, 'dep') : []), ...viaOut];
+  const post = [...viaBack, ...(gA ? gate(gA, gA.arrFt, 'arr') : []), ...procPoints(NAVDB.proc, arr, 'STAR', starKey)];
   const from = pre.length ? pre[pre.length - 1].pos : D?.pos, to = post.length ? post[0].pos : A?.pos;
   p.from = from;
   // Rumbo automático: el que hace más corto el vuelo completo (en el área lo elige su propio cálculo)
@@ -535,7 +568,6 @@ function update() {
 }
 
 // ---------- Viento real: METAR de la salida (VATSIM, real) + viento en ruta a tu altitud (Open-Meteo, por niveles de presión) ----------
-const WX = { key: null, at: 0, data: null, metar: '', metarFor: '', busy: false, timer: 0, err: '' };
 const WX_LEVELS = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200];
 const wxCenter = () => { const q = wpts.map(w => w.pos); return [q.reduce((a, x) => a + x[0], 0) / q.length, q.reduce((a, x) => a + x[1], 0) / q.length]; };
 // Viento (de dónde viene, kt) a una altitud en pies, interpolando entre niveles por componentes
@@ -1018,9 +1050,9 @@ function listMissions(sel) {
 }
 const currentState = () => Object.fromEntries(FIELDS.map(f => [f, $(f).type === 'checkbox' ? $(f).checked : $(f).value]));
 function applyState(st) {
-  for (const f of FIELDS) if (f in st && !['park', 'sid', 'star'].includes(f)) $(f).type === 'checkbox' ? ($(f).checked = st[f]) : ($(f).value = st[f]);
+  for (const f of FIELDS) if (f in st && !['park', 'sid', 'star', 'rwyDep', 'rwyArr'].includes(f)) $(f).type === 'checkbox' ? ($(f).checked = st[f]) : ($(f).value = st[f]);
   prevType = $('type').value; prevUnit = $('unit').value;
-  fillPositions(st.park ?? ''); fillProcs(st.sid ?? '', st.star ?? '');
+  fillPositions(st.park ?? ''); fillProcs(st.sid ?? '', st.star ?? '', st.rwyDep ?? '', st.rwyArr ?? '');
   drawAreaHandles(); syncTrail(); update();
   map.fitBounds(L.latLngBounds((flight?.pts?.length ? flight.pts : wpts.map(w => w.pos))).pad(0.15));
 }

@@ -187,10 +187,16 @@
   <details class="card" id="routeCard">
     <summary><b class="step">4</b> Ruta: SID, STAR y puntos intermedios</summary>
     <div class="body">
-      <label>SID (salida) <select id="sid"></select></label>
+      <div class="grid2">
+        <label>Pista de salida <select id="rwyDep" title="Filtra las SID. Auto: la de más viento de cara (METAR o viento de los campos)"></select></label>
+        <label>SID (salida) <select id="sid"></select></label>
+      </div>
       <label>Ida por (fixes, VOR, NDB o coordenadas) <input id="viaOut" placeholder="p. ej. SLL VLA 4124N00157E"></label>
       <label>Vuelta por <input id="viaBack" placeholder="p. ej. SLL"></label>
-      <label>STAR (llegada) <select id="star"></select></label>
+      <div class="grid2">
+        <label>Pista de llegada <select id="rwyArr" title="Filtra las STAR. Auto: la de más viento de cara"></select></label>
+        <label>STAR (llegada) <select id="star"></select></label>
+      </div>
       <div id="routeInfo" class="note hint"></div>
     </div>
   </details>
