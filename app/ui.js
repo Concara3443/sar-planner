@@ -74,10 +74,16 @@ $('sarbase').addEventListener('change', () => {
   const b = sarBase();
   if (b) {
     $('dep').value = $('arr').value = b.icao; fillPositions('');
-    $('opr').value = b.u.opr; $('ftype').value = b.u.ftype; $('sts').value = 'SAR';
-  }
+    $('opr').value = b.u.opr; $('ftype').value = b.u.ftype; $('sts').value = ''; // STS/SAR: automático si es búsqueda
+  } else clearSarFpl();
   update();
 });
+// Sin base SAR: quitar del plan lo que puso la base (operador y tipo de vuelo militar), no lo que escribiste tú
+function clearSarFpl() {
+  if (Object.values(SAR_UNITS).some(u => u.opr === $('opr').value)) $('opr').value = '';
+  if ($('ftype').value === 'M') $('ftype').value = 'X';
+  if ($('sts').value.trim().toUpperCase() === 'SAR') $('sts').value = '';
+}
 // Nota bajo el selector: qué hay de verdad en esa base y cómo queda en el FPL
 function sarBaseInfo() {
   const b = sarBase();
@@ -99,7 +105,7 @@ for (const id of ['sarbaseInfo', 'driftInfo']) $(id).addEventListener('click', e
   if (e.target.dataset?.best) bestSearch();
 });
 // Cambiar la salida a mano deja de usar una base fija (la nota ya no valdría)
-$('dep').addEventListener('change', () => { if (/^\d+$/.test($('sarbase').value) && $('dep').value.trim().toUpperCase() !== sarBase().icao) $('sarbase').value = ''; });
+$('dep').addEventListener('change', () => { if (/^\d+$/.test($('sarbase').value) && $('dep').value.trim().toUpperCase() !== sarBase().icao) { $('sarbase').value = ''; clearSarFpl(); } });
 $('apts').innerHTML = Object.entries(DB).map(([k, a]) => `<option value="${k}">${a[0]}</option>`).join('');
 
 const NAVDB = typeof NAV_DB === 'object' && NAV_DB.nav ? NAV_DB : { nav: {}, proc: {} };
@@ -488,6 +494,7 @@ async function simulate() {
     const k = 5 + Math.floor(rnd(0, 3)), a0 = rnd(0, 360);
     setArea([...Array(k).keys()].map(i => proj(c, a0 + i * 360 / k + rnd(-15, 15), r * rnd(0.7, 1.3))));
     if (!$('covCam').checked) $('covCam').click();
+    $('sarbase').value = ''; clearSarFpl();
     $('drift').checked = false; $('type').value = 'AREA'; $('auto').checked = true; $('il').value = 'auto';
     $('gsd').value = String(pickW(prof.cruise >= 400 ? [[10, 1], [20, 2], [50, 1]] : [[3, 1], [5, 2], [10, 2], [20, 1]]));
     $('ov').value = String(pickW([[30, 3], [60, 1]]));
@@ -1163,6 +1170,9 @@ const FPL_EQ = {
 };
 // Estela de los tipos sugeridos en «Avión en el plan» (peso máximo: L < 7 t ≤ M < 136 t)
 const TYPE_WAKE = { A139: 'L', EC25: 'M', AS32: 'M', NH90: 'M', CN35: 'M', C295: 'M', C30J: 'M', H60: 'M' };
+// Qué es el vuelo (para RMK y STS): búsqueda si el modo es SAR o se calcula la deriva (aunque la separación sea a mano),
+// fotografía, o si no, survey
+const missionKind = () => ($('cov').value === 'cam' ? 'photo' : $('cov').value === 'sar' || $('drift').checked ? 'sar' : 'survey');
 const clean18 = t => t.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9 ./-]/g, ' ').replace(/\s+/g, ' ').trim();
 // Observaciones automáticas según lo que se hace
 function autoRmk() {
@@ -1170,7 +1180,7 @@ function autoRmk() {
   const where = p.type === 'AREA' ? `AREA ${(polyAreaM2(p.area.length >= 3 ? p.area : plan.all.map(w => w.pos)) / 1e6).toFixed(0)}KM2 ${Math.round(plan.all.length / 2)} LEGS`
     : `${p.type} PATTERN CSP ${icaoCoord(p.csp)}`;
   const part = plan.parts.length > 1 ? ` FLT ${plan.k + 1} OF ${plan.parts.length}` : '';
-  if ($('cov').value === 'sar') return clean18(`SAR MISSION ${where} SRCH ALT ${alt}FT TRK SPACING ${sp}NM OBJ ${$('sobj').selectedOptions[0]?.text || ''}${part}`);
+  if (missionKind() === 'sar') return clean18(`SAR MISSION ${where} SRCH ALT ${alt}FT TRK SPACING ${sp}NM OBJ ${$('sobj').selectedOptions[0]?.text || ''}${part}`);
   if ($('cov').value === 'cam') {
     const gsd = coverage()?.swath / (+$('px').value || 6000) * 100;
     return clean18(`AERIAL PHOTO SURVEY ${where} BLOCK ${alt}FT${gsd ? ` GSD ${Math.round(gsd)}CM` : ''}${part}`);
@@ -1200,7 +1210,7 @@ function fplFields() {
     eetSec: (lastTimes.pat || 0) + (lastTimes.tr || 0),
     depGate: plan.pre.filter(q => q.gate === 'dep').map(q => ({ fix: q.name, ft: q.alt }))[0] || null,
     arrGate: plan.post.filter(q => q.gate === 'arr').map(q => ({ fix: q.name, ft: q.alt }))[0] || null,
-    sts: clean18($('sts').value) || ($('cov').value === 'sar' ? 'SAR' : ''),
+    sts: clean18($('sts').value) || (missionKind() === 'sar' ? 'SAR' : ''),
     pbn: equip.includes('R') ? eq[4] : '', nav: equip.includes('G') && eq[4] ? 'SBAS' : '', sur: eq[5],
     dof: `${String(now.getUTCFullYear()).slice(2)}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}`,
     reg: /^[A-Z]{5}$/.test(cs) ? cs : '', opr: clean18($('opr').value), rmk: clean18($('rmk').value) || autoRmk(),
