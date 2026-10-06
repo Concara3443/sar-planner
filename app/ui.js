@@ -307,7 +307,7 @@ function coverage() {
 }
 
 // Deriva: datum al llegar a la zona (lo perdido + el tránsito hasta allí), dibujo en el mapa y botones para usarlo
-let lastDrift = null; // último datum calculado (lo usa «✨ Mejor patrón»)
+let lastDrift = null, lastBest = null; // último datum calculado y último plan de «✨ Mejor patrón»
 function driftView(D, p) {
   lastDrift = null;
   $('driftBox').style.display = $('drift').checked ? '' : 'none';
@@ -326,6 +326,8 @@ function driftView(D, p) {
   L.circleMarker(d.datum, { radius: 6, color: '#111', weight: 1, fillColor: '#4dd0e1', fillOpacity: 1 }).bindTooltip(`Datum (dentro de ${(hours).toFixed(1).replace('.', ',')} h)`).addTo(layer);
   L.circle(d.datum, { ...opt, radius: d.E * NM, dashArray: '2 6' }).addTo(layer);
   L.polygon(sq, { ...opt, fill: false, dashArray: '8 6' }).addTo(layer);
+  if (sim && sim.revealed) L.circleMarker(sim.truth, { radius: 7, color: '#fff', weight: 2, fillColor: '#ff3b3b', fillOpacity: 1 })
+    .bindTooltip('Posición real (simulada)', { permanent: true, direction: 'right' }).addTo(layer);
   const f = v => v.toFixed(1).replace('.', ',');
   $('driftInfo').innerHTML = `Cuando llegues habrán pasado <b>${f(hours)} h</b> (${f(+$('dHours').value)} perdido + ${f(tr)} de tránsito). `
     + `El objeto habrá derivado <b>${f(d.driftNm)} NM hacia el ${String(Math.round(d.driftBrg)).padStart(3, '0')}°</b> `
@@ -352,30 +354,127 @@ function bestSearch() {
   const avail = endur > 0 ? (endur - (+$('resv').value || 0) * 60) / 3600 : Infinity, hours = avail - legs;
   if (hours < 0.1) { $('msg').innerHTML = `<span style="color:var(--warn)">Con esa autonomía no te queda tiempo en la zona: solo ir y volver son ${Math.round(legs * 60)} min.</span>`; return; }
   const radius = params().radius / NM, minR = 3 * radius; // un área más pequeña que eso no se puede volar con tus giros
+  const Smin = 2 * radius / 8, Cmax = W / Smin; // separación mínima volable entrelazando hasta 8 pasadas
   const fit = b => (b.R >= minR ? b : { ...b, R: minR, POC: pocSquare(minR, d.E), POS: pocSquare(minR, d.E) * b.POD });
   const apply = b => {
     const type = /^piw|surf|debris/.test(obj) && b.R <= 3 && b.R >= 4 * radius ? 'VS' : b.R <= 6 && b.S >= 2 * radius ? 'SS' : 'AREA';
-    $('cf').value = String(b.C); $('type').value = type; $('auto').checked = true; $('il').value = 'auto';
+    // Cobertura de la lista → modo SAR; si solo cabe una menor (avión rápido), separación a mano
+    if ([0.5, 1, 1.5, 2].includes(b.C)) { if (!$('covSar').checked) $('covSar').click(); $('cf').value = String(b.C); }
+    else { if (!$('covMan').checked) $('covMan').click(); $('sp').value = $('spman').value = fmt(b.S * NM / unitM()); }
+    $('type').value = type; $('auto').checked = true; $('il').value = 'auto'; $('gota').checked = false;
     if (type === 'AREA') setArea([45, 135, 225, 315].map(a => proj(d.datum, d.driftBrg + a, b.R * NM * Math.SQRT2)));
     else { $('lat').value = d.datum[0].toFixed(5); $('lon').value = d.datum[1].toFixed(5); }
     if (type === 'VS') $('len').value = fmt(b.R * NM / unitM());
     if (type === 'SS') $('n').value = Math.min(MAX_LEGS, 2 * Math.ceil(2 * b.R / b.S));
     drawAreaHandles(); update();
+    if (hasTurnErrors()) { $('gota').checked = true; update(); } // último recurso: sobrevolar y dar la vuelta (gota)
     return type;
   };
   // La fórmula del esfuerzo no cuenta giros, tránsitos entre pasadas ni la ruta real (SID/STAR): se mide el vuelo de
   // verdad y, si no cabe en la autonomía, se repite con menos horas en la zona hasta que quepa
-  let h = hours, b = fit(bestEffort(d.E, W, tas, h)), type = apply(b);
+  let h = hours, b = fit(bestEffort(d.E, W, tas, h, Cmax)), type = apply(b);
   for (let k = 0; k < 8 && isFinite(avail) && (lastTimes.pat + lastTimes.tr) / 3600 > avail; k++) {
     h = Math.max(0.05, h * (avail - lastTimes.tr / 3600) / (lastTimes.pat / 3600) * 0.97);
-    b = fit(bestEffort(d.E, W, tas, h)); type = apply(b);
+    b = fit(bestEffort(d.E, W, tas, h, Cmax)); type = apply(b);
   }
+  lastBest = b;
   const f = v => v.toFixed(v < 1 ? 2 : 1).replace('.', ','), pc = v => Math.round(v * 100) + ' %';
   const name = { VS: 'Sector (VS) centrado en el datum', SS: 'Cuadrado expansivo (SS) desde el datum', AREA: 'Barrido del área alrededor del datum' }[type];
-  $('msg').innerHTML = `✨ <b>${name}</b>: ${type === 'VS' ? `radio ${f(b.R)} NM` : `${f(2 * b.R)} × ${f(2 * b.R)} NM`}, S = ${f(b.S)} NM, cobertura ${String(b.C).replace('.', ',')}`
+  $('msg').innerHTML = `✨ <b>${name}</b>: ${type === 'VS' ? `radio ${f(b.R)} NM` : `${f(2 * b.R)} × ${f(2 * b.R)} NM`}, S = ${f(b.S)} NM, cobertura ${String(+b.C.toFixed(2)).replace('.', ',')}`
     + ` (${isFinite(hours) ? `el patrón dura ${Math.round(lastTimes.pat / 60)} min y el vuelo completo ${Math.round((lastTimes.pat + lastTimes.tr) / 60)} de los ${Math.round(avail * 60)} que tienes` : 'primera búsqueda; pon tu autonomía para ajustarlo a tu tiempo'}).`
-    + `<br>Probabilidad de encontrarlo: está dentro ${pc(b.POC)} × lo ves si está ${pc(b.POD)} = <b>${pc(b.POS)}</b>.`;
+    + `<br>Probabilidad de encontrarlo: está dentro ${pc(b.POC)} × lo ves si está ${pc(b.POD)} = <b>${pc(b.POS)}</b>.`
+    + (b.C < 0.5 ? `<br><span style="color:var(--warn)">Con tu velocidad no se pueden volar pasadas más juntas de ${f(Smin)} NM: para este objeto, mejor un helicóptero o volar más despacio.</span>` : '')
+    + ($('gota').checked ? '<br>Algunos giros no caben ni entrelazando: se ha activado la gota (sobrevuela y da la vuelta).' : '');
 }
+// ---- 🎲 Simular un caso con el avión elegido ----
+// Búsqueda: base SAR real adecuada (helicóptero: bases de helicópteros; avión: aeropuertos de costa), posición perdida en
+// el mar a una distancia que permite ir, buscar y volver con su autonomía, objeto, horas, viento y precisión al azar.
+// La posición real se sortea con la propia distribución del datum (y se oculta). Fotografía: área y calidad al azar
+// cerca de la salida. Luego aplica ✨ (velocidad y altitud) y, en búsqueda, ✨ Mejor patrón.
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pickW = list => { let r = Math.random() * list.reduce((t, [, w]) => t + w, 0); return list.find(([, w]) => (r -= w) < 0)[0]; };
+let sim = null; // { truth, revealed } del caso simulado
+// ponytail: sin línea de costa, «mar» = hacia el lado contrario a los aeropuertos cercanos y a más de 12 NM de cualquiera
+function seaPoint(base, minD, maxD) {
+  const near = Object.values(DB).filter(a => dist(base, [a[1], a[2]]) < 60 * NM);
+  const land = near.reduce(([n, e], a) => { const b = brg(base, [a[1], a[2]]) * RAD; return [n + Math.cos(b), e + Math.sin(b)]; }, [0, 0]);
+  const sea = Math.atan2(land[1], land[0]) / RAD + 180;
+  let q = null;
+  for (let k = 0; k < 80; k++) {
+    q = proj(base, sea + rnd(-70, 70), Math.sqrt(rnd(minD ** 2, maxD ** 2)) * NM);
+    if (nearestApt(q).d > 12 * NM) return q;
+  }
+  return q;
+}
+function simulate() {
+  const prof = PROFILES[$('acft').value] || PROFILES.custom, heli = prof.craft === 'heli';
+  const endurH = +$('endur').value / 60 || prof.endur || 4, cruise = prof.cruise || +$('tas').value || 120;
+  const mode = prof.sar && prof.photo ? (Math.random() < 0.6 ? 'sar' : 'cam') : prof.photo ? 'cam' : 'sar';
+  if (!$('endur').value) $('endur').value = Math.round(endurH * 60);
+  if (prof.search) $('tas').value = prof.search;
+  if (!$('wreal').checked) { $('wdir').value = 10 * Math.floor(rnd(0, 36)); $('wkt').value = Math.round(rnd(4, 25)); }
+  $('vis').value = Math.round(rnd(3, 20)); $('sea').value = +$('wkt').value < 15 ? '0' : +$('wkt').value < 25 ? '1' : '2';
+  sim = null; lastBest = null;
+  if (mode === 'sar') {
+    const bases = sarOpts().filter(b => DB[b.icao] && (heli || DB[b.icao][6] === 'A') && b.icao !== 'LECU');
+    const b = bases[Math.floor(Math.random() * bases.length)];
+    $('sarbase').value = String(b.i); $('sarbase').dispatchEvent(new Event('change'));
+    const lkp = seaPoint(apt(b.icao).pos, 10, Math.min(heli ? 120 : 350, cruise * endurH * 0.3));
+    const obj = pickW([['piwS', 3], ['piw', 2], ['piwSuit', 1], ['raftDB46', 3], ['raftNBc', 2], ['raftDB1525', 1], ['refugee', 1], ['kayak', 1],
+      ['windsurf', 1], ['skiffV', 2], ['sport', 2], ['fisher', 1], ['sailFin', 2], ['fv', 2]]);
+    if (!$('covSar').checked) $('covSar').click();
+    $('drift').checked = true; $('lkpLat').value = lkp[0].toFixed(4); $('lkpLon').value = lkp[1].toFixed(4);
+    $('dObj').value = obj; $('dHours').value = rnd(0.5, heli ? 4 : 10).toFixed(1);
+    $('dX').value = String(pickW([[0.1, 4], [1, 1], [3, 2], [5, 1], [15, 1]]));
+    $('sobj').value = LEEWAY_SWEEP[obj]; $('lat').value = $('lkpLat').value; $('lon').value = $('lkpLon').value;
+    update(); computeIdeal(); bestSearch();
+    if (!lastDrift) return;
+    // Posición real: uno de los dos datums (50 %) más un error normal circular con su error probable
+    const d = lastDrift.d, sg = (d.E - dist(d.dL, d.dR) / NM / 2) / 1.1774;
+    const g = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
+    const n = g() * sg, e = g() * sg, from = Math.random() < 0.5 ? d.dL : d.dR;
+    sim = { truth: proj(from, Math.atan2(e, n) / RAD, Math.hypot(n, e) * NM), revealed: false };
+    $('msg').innerHTML = `🎲 <b>Caso simulado</b> desde ${b.where} (${b.icao}): ${$('dObj').selectedOptions[0].text.toLowerCase()}, perdido hace `
+      + `${$('dHours').value.replace('.', ',')} h, posición ${$('dX').selectedOptions[0].text.toLowerCase()}, viento ${$('wdir').value}°/${$('wkt').value} kt, `
+      + `visibilidad ${$('vis').value} NM.<br>${$('msg').innerHTML}<br><button class="sec small" id="simReveal">👁 ¿Dónde estaba de verdad?</button>`;
+  } else {
+    const dep = apt($('dep').value.trim().toUpperCase()) || apt(nearestApt([+$('lat').value, +$('lon').value]).icao);
+    const c = proj(dep.pos, rnd(0, 360), rnd(5, Math.max(6, Math.min(40, cruise * endurH * 0.15))) * NM), r = rnd(0.8, heli ? 2 : 5) * 1000;
+    const k = 5 + Math.floor(rnd(0, 3)), a0 = rnd(0, 360);
+    setArea([...Array(k).keys()].map(i => proj(c, a0 + i * 360 / k + rnd(-15, 15), r * rnd(0.7, 1.3))));
+    if (!$('covCam').checked) $('covCam').click();
+    $('drift').checked = false; $('type').value = 'AREA'; $('auto').checked = true; $('il').value = 'auto';
+    $('gsd').value = String(pickW(prof.cruise >= 400 ? [[10, 1], [20, 2], [50, 1]] : [[3, 1], [5, 2], [10, 2], [20, 1]]));
+    $('ov').value = String(pickW([[30, 3], [60, 1]]));
+    const gsdTxt = $('gsd').selectedOptions[0].text.toLowerCase(); // el selector vuelve a «elegir» al aplicarse
+    $('gota').checked = false; $('gsd').dispatchEvent(new Event('change'));
+    drawAreaHandles(); update(); computeIdeal();
+    if (hasTurnErrors()) { $('gota').checked = true; update(); }
+    $('msg').innerHTML = `🎲 <b>Encargo simulado</b>: fotografiar ${(polyAreaM2(areaPts()) / 1e6).toFixed(1).replace('.', ',')} km² a `
+      + `${gsdTxt} con ${$('ov').value} % de solape, saliendo de ${$('dep').value}. El plan ya está calculado`
+      + `${$('gota').checked ? ' (con gota: el área es pequeña para tus giros)' : ''}.`;
+  }
+  const lay = layer.getLayers().filter(l => l.getLatLng || l.getBounds);
+  if (lay.length) map.fitBounds(L.featureGroup(lay).getBounds(), { padding: [30, 30] });
+}
+$('sim').onclick = simulate;
+// Revelar la posición real del caso simulado: ¿estaba en la zona buscada? ¿lo habrías visto?
+$('msg').addEventListener('click', e => {
+  if (e.target.id !== 'simReveal' || !sim) return;
+  sim.revealed = true; update();
+  const p = params(), t = sim.truth, poly = p.type === 'AREA' ? p.area : null;
+  let inside = false;
+  if (poly) for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [yi, xi] = poly[i], [yj, xj] = poly[j];
+    if ((yi > t[0]) !== (yj > t[0]) && t[1] < (xj - xi) * (t[0] - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  else inside = dist(t, p.csp) <= (p.type === 'VS' ? p.len : (p.n / 4) * p.sp);
+  const pod = lastBest ? lastBest.POD : 1 - Math.exp(-(+$('cf').value || 1)), found = inside && Math.random() < pod;
+  e.target.outerHTML = `👁 Estaba a ${(dist(t, lastDrift ? lastDrift.d.datum : p.csp) / NM).toFixed(1).replace('.', ',')} NM del datum, `
+    + (inside ? `<b>dentro</b> de la zona: con esta cobertura lo verías con un ${Math.round(pod * 100)} % de probabilidad → `
+      + (found ? '<b style="color:var(--ok)">¡encontrado!</b>' : '<b style="color:var(--warn)">pasaste sin verlo</b> (habría que repetir la búsqueda)')
+      : '<b style="color:var(--warn)">fuera</b> de la zona buscada: tocaba ampliar el área en la siguiente búsqueda.');
+});
 $('lkpCsp').onclick = () => { $('lkpLat').value = $('lat').value; $('lkpLon').value = $('lon').value; update(); };
 function update() {
   fillProcs(); // salida/destino pueden cambiar por código (base SAR, botones, mapa): listas de SID/STAR al día
@@ -827,27 +926,28 @@ function autoFix(prefs) {
 }
 // ---------- Generador: velocidad y altitud ideales ----------
 // Perfiles orientativos: velocidad mínima cómoda, velocidad de búsqueda visual y crucero (TAS, kt)
-// ponytail: cifras orientativas (no de manuales); ajústalas aquí si tu avión vuela distinto
+// ponytail: cifras orientativas (no de manuales); ajústalas aquí si tu avión vuela distinto.
+// endur: autonomía típica (h); photo/sar: qué misiones puede simular «🎲 Simular un caso»
 const PROFILES = {
-  custom:   { name: 'tu avión', min: 60, search: null, cruise: null, craft: 'plane' },
-  c172:     { name: 'Cessna 172', min: 65, search: 90, cruise: 120, craft: 'plane' },
-  c208:     { name: 'Grand Caravan', min: 75, search: 110, cruise: 175, craft: 'plane' },
-  kodiak:   { name: 'Kodiak 100', min: 70, search: 110, cruise: 170, craft: 'plane' },
-  dhc6:     { name: 'Twin Otter', min: 70, search: 110, cruise: 150, craft: 'plane' },
-  pc12:     { name: 'PC-12', min: 100, search: 150, cruise: 280, craft: 'plane' },
-  aerostar: { name: 'Aerostar 600', min: 110, search: 150, cruise: 220, craft: 'plane' },
-  kingair:  { name: 'King Air 350i', min: 110, search: 160, cruise: 300, craft: 'plane' },
-  c130:     { name: 'C-130J', min: 140, search: 180, cruise: 320, craft: 'plane' },
-  lj35:     { name: 'Learjet 35A', min: 150, search: 220, cruise: 440, craft: 'plane' },
-  cj3:      { name: 'Citation CJ3+', min: 140, search: 200, cruise: 410, craft: 'plane' },
-  h160:     { name: 'H160', min: 40, search: 90, cruise: 160, craft: 'heli' },
-  mh60:     { name: 'MH-60', min: 40, search: 90, cruise: 150, craft: 'heli' },
-  ec135:    { name: 'EC135', min: 40, search: 80, cruise: 135, craft: 'heli' },
-  h125:     { name: 'H125', min: 40, search: 80, cruise: 130, craft: 'heli' },
-  b407:     { name: 'Bell 407', min: 40, search: 80, cruise: 130, craft: 'heli' },
-  bo105:    { name: 'Bo 105', min: 40, search: 80, cruise: 120, craft: 'heli' },
-  uh1:      { name: 'UH-1H', min: 40, search: 80, cruise: 110, craft: 'heli' },
-  r66:      { name: 'R66', min: 35, search: 70, cruise: 110, craft: 'heli' },
+  custom:   { name: 'tu avión', min: 60, search: null, cruise: null, craft: 'plane', endur: null, photo: true, sar: true },
+  c172:     { name: 'Cessna 172', min: 65, search: 90, cruise: 120, craft: 'plane', endur: 4.5, photo: true, sar: true },
+  c208:     { name: 'Grand Caravan', min: 75, search: 110, cruise: 175, craft: 'plane', endur: 6, photo: true, sar: true },
+  kodiak:   { name: 'Kodiak 100', min: 70, search: 110, cruise: 170, craft: 'plane', endur: 6, photo: true, sar: true },
+  dhc6:     { name: 'Twin Otter', min: 70, search: 110, cruise: 150, craft: 'plane', endur: 6, photo: true, sar: true },
+  pc12:     { name: 'PC-12', min: 100, search: 150, cruise: 280, craft: 'plane', endur: 7, photo: true, sar: true },
+  aerostar: { name: 'Aerostar 600', min: 110, search: 150, cruise: 220, craft: 'plane', endur: 5, photo: true, sar: true },
+  kingair:  { name: 'King Air 350i', min: 110, search: 160, cruise: 300, craft: 'plane', endur: 6, photo: true, sar: true },
+  c130:     { name: 'C-130J', min: 140, search: 180, cruise: 320, craft: 'plane', endur: 10, photo: false, sar: true },
+  lj35:     { name: 'Learjet 35A', min: 150, search: 220, cruise: 440, craft: 'plane', endur: 3.5, photo: true, sar: false },
+  cj3:      { name: 'Citation CJ3+', min: 140, search: 200, cruise: 410, craft: 'plane', endur: 4, photo: true, sar: false },
+  h160:     { name: 'H160', min: 40, search: 90, cruise: 160, craft: 'heli', endur: 4, photo: false, sar: true },
+  mh60:     { name: 'MH-60', min: 40, search: 90, cruise: 150, craft: 'heli', endur: 3.5, photo: false, sar: true },
+  ec135:    { name: 'EC135', min: 40, search: 80, cruise: 135, craft: 'heli', endur: 3, photo: true, sar: true },
+  h125:     { name: 'H125', min: 40, search: 80, cruise: 130, craft: 'heli', endur: 4, photo: true, sar: true },
+  b407:     { name: 'Bell 407', min: 40, search: 80, cruise: 130, craft: 'heli', endur: 3.5, photo: true, sar: true },
+  bo105:    { name: 'Bo 105', min: 40, search: 80, cruise: 120, craft: 'heli', endur: 3, photo: true, sar: true },
+  uh1:      { name: 'UH-1H', min: 40, search: 80, cruise: 110, craft: 'heli', endur: 2.5, photo: false, sar: true },
+  r66:      { name: 'R66', min: 35, search: 70, cruise: 110, craft: 'heli', endur: 3, photo: true, sar: true },
 };
 const SEARCH_ALTS = [300, 500, 750, 1000, 1500, 2000, 2500, 3000];
 

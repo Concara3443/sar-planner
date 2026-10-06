@@ -31,6 +31,10 @@ doble clic, mejor en Chrome o Edge.
   coordenadas.
 - **Deriva**: desde la última posición conocida, el objeto (27 tipos de la tabla H-7), las horas perdido y la
   corriente (por viento y marina) calcula dónde estará al llegar, el error probable y el cuadrado de búsqueda.
+- **✨ Mejor patrón**: con la deriva, el objeto, tu avión y tu autonomía, el área, la cobertura y el patrón que dan
+  más probabilidad de encontrarlo (POC × POD), comprobando que el vuelo real cabe en el tiempo.
+- **🎲 Simular un caso**: inventa una búsqueda en el mar (o un encargo de fotografía) que encaja con el avión elegido.
+  La posición real queda oculta hasta que la revelas.
 - **Autonomía**: con tu autonomía y la reserva final, el tiempo que puedes estar en la zona o el punto de no retorno.
 - **Bases SAR reales en España** (Salvamento Marítimo y Ejército del Aire): ponen salida, destino, operador, tipo de
   vuelo y STS/SAR en el plan.

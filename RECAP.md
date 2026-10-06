@@ -39,6 +39,7 @@ Datos (aeropuertos, fixes, SID, STAR): `python scripts/exportar_aeropuertos.py` 
 - [x] Avión del plan ICAO: el que vuelas o el tipo que escribas (AW139, EC-225, Super Puma, CN-235…), con su estela
 - [x] ✨ Mejor patrón con los datos de la deriva: área, cobertura y patrón (VS/SS/área) que dan más probabilidad de éxito en el tiempo que tienes, medido con el vuelo real
 - [x] Señales y luces como objeto (estroboscópica, bengalas, espejo, humo…; tablas H-20 a H-24)
+- [x] 🎲 Simular un caso con el avión elegido: búsqueda en el mar desde una base SAR real (con deriva, mejor patrón y posición real oculta que se puede revelar) o encargo de fotografía, según lo que pueda hacer el avión
 
 ## A tener en cuenta
 - Velocidades, equipos ICAO y consumos de cada avión son orientativos (tablas `PROFILES` y `FPL_EQ` en `app/ui.js`).
