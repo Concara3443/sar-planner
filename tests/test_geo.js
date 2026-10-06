@@ -44,12 +44,10 @@ assert(!ext.includes("CSP2X") && ext.includes("CSP4X") && ext.includes("V1X"));
 // Crosshatch: la 2ª pasada empieza en la esquina más cercana (sin vuelta de 180°)
 w = g.buildPattern({ ...base, type: "PS", xh: true, hdg: 90, len: 6 * NM, sp: 1.5 * NM, n: 4, radius: R });
 assert(turnsOf(w).every(a => a < 170), "crosshatch sin giros de 180°");
-// Gota en pasadas más juntas que el diámetro de giro: bombilla con todos los giros dentro del radio y entrada alineada
+// Gota: un solo punto de sobrepaso por vuelta si las pasadas están más juntas que el diámetro de giro; si no, ninguno
 for (const sp of [0.4, 1, 1.8, 3]) {
   w = g.buildPattern({ ...base, type: "PS", gota: true, hdg: 0, len: 6 * NM, sp: sp * NM, n: 4, radius: 1 * NM });
-  const t = g.gtnTurns(w, 1 * NM);
-  assert(t.every(x => x.fit > 0.999), `gota S=${sp}: giros que no caben ${w.map((x, i) => x.name + ":" + t[i].fit.toFixed(2))}`);
-  assert(w.filter(x => x.flyby).length >= 2 && turnsOf(w).every(a => a < 125), `gota S=${sp}: forma ${w.map(x => x.name)} ${turnsOf(w).map(Math.round)}`);
+  assert.equal(w.filter(x => x.ext).length, sp < 2 ? 3 : 0, `gota S=${sp}: ${w.map(x => x.name)}`);
 }
 ok("patrones clásicos, gota y crosshatch");
 
