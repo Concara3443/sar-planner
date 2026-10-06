@@ -5,7 +5,7 @@ const geo = fs.readFileSync(path.join(dir, "data/iamsar.js"), "utf8") + "\n" + f
 for (const f of fs.readdirSync(path.join(dir, "app")).filter(f => f.endsWith(".js"))) // sintaxis de todos los .js
   new Function(fs.readFileSync(path.join(dir, "app", f), "utf8"));
 const g = new Function(geo + `;return {buildPattern, buildPln, departurePosition, sweepWidth, bestAreaRoute, polyAreaM2, splitPlan,
-  icaoCoord, resolveVia, procPoints, bestHeading, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn}`)();
+  icaoCoord, resolveVia, procPoints, bestHeading, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc}`)();
 const { NM } = g, c = [41.4, 2.0], R = g.turnRadius(120, 25);
 const at = (n, e) => g.proj(g.proj(c, 0, n * NM), 90, e * NM);
 const legStr = w => w.slice(1).map((x, i) => (g.dist(w[i].pos, x.pos) / NM).toFixed(1) + "@" + Math.round(g.brg(w[i].pos, x.pos)));
@@ -187,4 +187,15 @@ ok("plan de vuelo ICAO (Y y Z)");
   assert(g.gtnTurns(w, Rg).every(x => x.fit > 1 - 1e-6));
 }
 ok("giros del GTN750 (recorte, radio repartido, alargar legs)");
+{ // Pista por viento y mejor SID/STAR para la zona
+  assert(g.procRwyOk("GODO4M 06B", "06L") && g.procRwyOk("X1A ALL", "24R") && g.procRwyOk("AGEN4F 24L", "24L"));
+  assert(!g.procRwyOk("AGEN4F 24L", "24R") && !g.procRwyOk("GODO4M 06B", "24L") && g.procRwyOk("AGEN4F 24L", null));
+  assert.equal(g.windRunway(["06L", "24R", "06R", "24L"], 230, 12, 1), "24R"); // viento de 230°: pistas 24
+  assert.equal(g.windRunway(["06", "24"], 60, 2), null); // calma: cualquiera
+  const procs = { XXXX: { SID: { "NORTE1A 06": [["N", 41.5, 2.0]], "SUR1A 06": [["S", 41.3, 2.0]], "SUR1B 24": [["S", 41.3, 2.0]] } } };
+  assert.equal(g.bestProc(procs, "XXXX", "SID", "06", c, at(-10, 0)), "SUR1A 06"); // zona al sur
+  assert.equal(g.bestProc(procs, "XXXX", "SID", "24", c, at(10, 0)), "SUR1B 24"); // en la 24 solo hay esa
+  assert.equal(g.bestProc(procs, "XXXX", "STAR", null, c, c), "");
+}
+ok("pista por viento y mejor SID/STAR");
 console.log("TODO OK");

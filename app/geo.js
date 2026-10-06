@@ -514,6 +514,31 @@ function procPoints(procs, apt, type, key) {
   return legs.map(([fix, lat, lon, region]) => ({ name: fix, pos: [lat, lon], kind: 'Intersection', region, icao: fix,
     [type === 'SID' ? 'sid' : 'star']: name, rwy }));
 }
+// ¿Vale el procedimiento (clave «NOMBRE PISTA») para la pista rwy? «06B» vale para 06L y 06R, «ALL» para todas
+function procRwyOk(key, rwy) {
+  const r = key.split(' ')[1];
+  return !rwy || r === 'ALL' || r === rwy || r === rwy.replace(/[LRC]$/, '') + 'B';
+}
+// Pista en servicio con ese viento (de dónde viene, °verdaderos): la de más viento de cara. Con menos de 3 kt, ninguna
+// (cualquiera vale). magVar: variación magnética del aeropuerto (+E), porque el número de pista es magnético.
+function windRunway(rwys, wdir, wkt, magVar = 0) {
+  if (!(wkt >= 3) || !rwys.length) return null;
+  const head = r => Math.cos(((wdir - (parseInt(r, 10) * 10 + magVar)) * RAD));
+  return rwys.reduce((a, b) => (head(b) > head(a) ? b : a));
+}
+// Mejor SID/STAR para esa pista (null = cualquiera): la que hace más corto el recorrido de a a b pasando por sus fixes
+// (SID: aeropuerto → fixes → zona; STAR: zona → fixes → aeropuerto). Devuelve la clave o '' si no hay ninguna.
+function bestProc(procs, apt, type, rwy, a, b) {
+  let best = '', bc = Infinity;
+  for (const [key, legs] of Object.entries(procs?.[apt]?.[type] || {})) {
+    if (!procRwyOk(key, rwy) || !legs.length) continue;
+    const pts = [a, ...legs.map(([, lat, lon]) => [lat, lon]), b];
+    let c = 0;
+    for (let i = 1; i < pts.length; i++) c += dist(pts[i - 1], pts[i]);
+    if (c < bc) { bc = c; best = key; }
+  }
+  return best;
+}
 // Patrones cuyo rumbo es libre (no lo fija la costa, la deriva o una ruta): se puede elegir el más rápido
 const AUTO_HDG = ['PS', 'SS', 'SSI', 'VS', 'CL', 'F8', 'OR', 'SPI'];
 // Rumbo inicial (de 5 en 5°) que hace más corto el vuelo completo salida → patrón → llegada, con el viento
