@@ -1,0 +1,4 @@
+# Manuales de terceros (18 MB, se descargan de la web de la USCG)
+*.pdf
+# Restos del conversor antiguo de OpenCPN
+*.gpx

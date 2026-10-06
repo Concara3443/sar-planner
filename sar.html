@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAR Planner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- Generado por scripts\exportar_aeropuertos.py desde Little Navmap (MSFS 2024) -->
+<script src="data/aeropuertos.js" onerror="window.AIRPORTS_DB = {}"></script>
+<script src="data/navdata.js" onerror="window.NAV_DB = { nav: {}, proc: {} }"></script>
+<script src="data/iamsar.js"></script>
+<script src="data/sarbases.js" onerror="window.SAR_BASES = []"></script>
+<link rel="stylesheet" href="app/sar.css">
+</head>
+<body>
+<div id="side">
+<div id="scroll">
+  <header>
+    <h1>SAR Planner <span>→ GTN750</span></h1>
+    <button id="reset" class="sec small" title="Vuelve a los valores estándar y corrige los giros que no caben. Mantiene zona, aeropuertos y unidades.">↺ Recomendado</button>
+  </header>
+
+  <details class="card" open>
+    <summary><b class="step">1</b> Avión y vuelo</summary>
+    <div class="body">
+      <label>Avión <select id="acft">
+        <option value="custom">Personalizado (usa tu TAS)</option>
+        <optgroup label="Ala fija">
+          <option value="c172">Cessna 172 SP</option>
+          <option value="c208">Cessna 208B Grand Caravan EX</option>
+          <option value="kodiak">Kodiak 100</option>
+          <option value="dhc6">DHC-6 Twin Otter</option>
+          <option value="pc12">Pilatus PC-12 NGX</option>
+          <option value="aerostar">Aerostar 600</option>
+          <option value="kingair">King Air 350i</option>
+          <option value="c130">C-130J Hércules</option>
+          <option value="lj35">Learjet 35A (foto a gran altura)</option>
+          <option value="cj3">Citation CJ3+ (foto a gran altura)</option>
+        </optgroup>
+        <optgroup label="Helicópteros">
+          <option value="h160">H160</option>
+          <option value="mh60">MH-60</option>
+          <option value="ec135">EC135</option>
+          <option value="h125">H125</option>
+          <option value="b407">Bell 407</option>
+          <option value="bo105">Bo 105</option>
+          <option value="uh1">UH-1H Huey</option>
+          <option value="r66">R66 (foto)</option>
+        </optgroup>
+      </select></label>
+      <label>Base SAR real <select id="sarbase" title="Sale y vuelve a una base real de salvamento: pone salida, destino, operador y tipo de vuelo del FPL"></select>
+        <span id="sarbaseInfo" class="hint"></span></label>
+      <div class="grid2">
+        <label>Salida (ICAO) <input id="dep" list="apts"><span id="depName" class="hint"></span></label>
+        <label>Destino (ICAO) <input id="arr" list="apts"><span id="arrName" class="hint"></span></label>
+      </div>
+      <label>Posición de salida <select id="park"></select></label>
+      <div class="grid3">
+        <label>TAS búsqueda (kt) <input id="tas" type="number" step="5"></label>
+        <label>Altitud búsqueda (ft) <input id="alt" type="number" step="100"></label>
+        <label>Crucero (ft) <input id="cruise" type="number" step="500" placeholder="= búsqueda"></label>
+      </div>
+      <label>Viento real (METAR + en ruta a tu altitud) <input id="wreal" type="checkbox"></label>
+      <div class="grid2">
+        <label>Viento de (° true) <input id="wdir" type="number" step="10" min="0" max="360"></label>
+        <label>Viento (kt) <input id="wkt" type="number" step="5" min="0"></label>
+      </div>
+      <div id="windInfo" class="note hint"></div>
+      <button id="ideal" class="small primary">✨ Calcular velocidad, altitud y rumbo ideales</button>
+      <div id="idealInfo" class="note hint"></div>
+    </div>
+  </details>
+
+  <details class="card" open id="covCard">
+    <summary><b class="step">2</b> Qué vas a hacer</summary>
+    <div class="body">
+      <div class="seg">
+        <input type="radio" name="covR" id="covSar" value="sar"><label for="covSar">🔎 Buscar (SAR)</label>
+        <input type="radio" name="covR" id="covCam" value="cam"><label for="covCam">📷 Fotografía</label>
+        <input type="radio" name="covR" id="covMan" value="man"><label for="covMan">✏ Libre</label>
+      </div>
+      <input type="hidden" id="cov">
+      <input type="hidden" id="spman"><!-- S manual guardada mientras S la calcula SAR/cámara -->
+      <div id="sarBox">
+        <label>Qué buscas <select id="sobj"></select></label>
+        <label id="pfdL">Lleva chaleco salvavidas <input id="pfd" type="checkbox"></label>
+        <div class="grid3">
+          <label>Desde <select id="craft"><option value="plane">Avión</option><option value="heli">Helicóptero</option></select></label>
+          <label>Visibilidad (NM) <input id="vis" type="number" step="1" min="1" max="30"></label>
+          <label>Mar <select id="sea"><option value="0">Calma</option><option value="1">Moderado</option><option value="2">Fuerte</option></select></label>
+        </div>
+        <label>Cómo de a fondo <select id="cf">
+          <option value="0.5">Rápida (≈ 39 % de encontrarlo)</option>
+          <option value="1">Normal (≈ 63 %)</option>
+          <option value="1.5">Minuciosa (≈ 78 %)</option>
+          <option value="2">Exhaustiva (≈ 86 %)</option>
+        </select></label>
+        <label>Tripulación cansada (más de 3 h buscando) <input id="fat" type="checkbox"></label>
+      </div>
+      <div id="camBox">
+        <div class="grid2">
+          <label>Calidad deseada <select id="gsd">
+            <option value="">— elegir —</option>
+            <option value="3">Muy alta (3 cm/px)</option>
+            <option value="5">Alta (5 cm/px)</option>
+            <option value="10">Media (10 cm/px)</option>
+            <option value="20">Baja (20 cm/px)</option>
+            <option value="50">Vista general (50 cm/px)</option>
+          </select></label>
+          <label>Altura sobre el terreno (ft) <input id="agl" type="number" step="100" placeholder="= altitud"></label>
+        </div>
+        <div class="grid3">
+          <label>Ángulo cámara (°) <input id="fov" type="number" step="1" min="5" max="170" list="fovList"></label>
+          <label>Solape lateral (%) <input id="ov" type="number" step="5" min="0" max="90" list="ovList"></label>
+          <label>Ancho foto (px) <input id="px" type="number" step="500" min="500"></label>
+        </div>
+        <datalist id="fovList">
+          <option value="74">Objetivo 24 mm (full frame)</option>
+          <option value="54">Objetivo 35 mm (full frame)</option>
+          <option value="40">Objetivo 50 mm (full frame)</option>
+          <option value="24">Objetivo 85 mm (full frame)</option>
+          <option value="70">Dron típico</option>
+        </datalist>
+        <datalist id="ovList">
+          <option value="20">Cobertura mínima</option>
+          <option value="30">Fotografía aérea estándar</option>
+          <option value="60">Ortofoto / modelo 3D</option>
+        </datalist>
+      </div>
+      <div id="covInfo" class="note hint"></div>
+    </div>
+  </details>
+
+  <details class="card" open>
+    <summary><b class="step">3</b> Dónde: zona o patrón</summary>
+    <div class="body">
+      <select id="type">
+        <optgroup label="Zona (fotografía / búsqueda en un área)">
+          <option value="AREA">✏ Área a medida: dibújala en el mapa</option>
+        </optgroup>
+        <optgroup label="IAMSAR (oficiales)">
+          <option value="PS">Parallel sweep search (PS)</option>
+          <option value="CS">Creeping line search (CS)</option>
+          <option value="SS">Expanding square search (SS)</option>
+          <option value="VS">Sector search (VS)</option>
+          <option value="TSR">Track line search, return (TSR)</option>
+          <option value="TSN">Track line search, non-return (TSN)</option>
+        </optgroup>
+        <optgroup label="Extras (policía, marina, drones)">
+          <option value="TRI">Triángulo de deriva (TRI)</option>
+          <option value="ZZ">Zig-zag / diente de sierra (ZZ)</option>
+          <option value="SSI">Cuadrado convergente (SSI)</option>
+          <option value="SPI">Espiral expansiva (SPI)</option>
+          <option value="CL">Trébol / cloverleaf (CL)</option>
+          <option value="F8">Ocho / figure-8 (F8)</option>
+        </optgroup>
+        <optgroup label="Básicos">
+          <option value="BP">Racetrack / barrier patrol (BP)</option>
+          <option value="OR">Órbita sobre punto (OR)</option>
+        </optgroup>
+      </select>
+      <div class="note hint" id="typeHint"></div>
+      <div id="areaBox">
+        <div class="grid2">
+          <button id="areaDraw" class="sec small">✏ Dibujar área</button>
+          <button id="areaClear" class="sec small">✕ Borrar área</button>
+        </div>
+        <label>Con viento: legs a favor/en contra (fotos sin deriva) <input id="walign" type="checkbox"></label>
+        <input type="hidden" id="area">
+        <div id="areaInfo" class="note hint"></div>
+      </div>
+      <div class="grid2" id="cspRow">
+        <label>CSP latitud <input id="lat" type="number" step="0.0001"></label>
+        <label>CSP longitud <input id="lon" type="number" step="0.0001"></label>
+      </div>
+      <div class="grid2">
+        <label><span id="hdgTxt">Rumbo inicial (° true)</span> <input id="hdg" type="number" step="1"></label>
+        <label id="autoL" class="check">Rumbo automático (el más rápido) <input id="auto" type="checkbox"></label>
+      </div>
+      <label id="lenL"><span id="lenTxt"></span> <input id="len" type="number" min="0"></label>
+      <label id="spL"><span id="spTxt">Separación S</span> <input id="sp" type="number" min="0"></label>
+      <label id="nL"><span id="nTxt"></span> <input id="n" type="number" step="1" min="1"></label>
+    </div>
+  </details>
+
+  <details class="card" id="routeCard">
+    <summary><b class="step">4</b> Ruta: SID, STAR y puntos intermedios</summary>
+    <div class="body">
+      <label>SID (salida) <select id="sid"></select></label>
+      <label>Ida por (fixes, VOR, NDB o coordenadas) <input id="viaOut" placeholder="p. ej. SLL VLA 4124N00157E"></label>
+      <label>Vuelta por <input id="viaBack" placeholder="p. ej. SLL"></label>
+      <label>STAR (llegada) <select id="star"></select></label>
+      <div id="routeInfo" class="note hint"></div>
+    </div>
+  </details>
+
+  <details class="card" id="advCard">
+    <summary>⚙ Ajustes avanzados</summary>
+    <div class="body">
+      <div class="grid2">
+        <label>Banco en los giros (°) <input id="bank" type="number" step="0.5" min="5" max="45"></label>
+        <label>Unidades <select id="unit"><option value="NM">NM</option><option value="km">km</option><option value="m">m</option></select></label>
+      </div>
+      <label id="dirL">Primer giro <select id="dir"><option value="1">Derecha</option><option value="-1">Izquierda</option></select></label>
+      <label id="ilL">Entrelazado (legs fuera de orden para que quepa el giro) <select id="il">
+        <option value="1">No</option><option value="auto">Auto</option>
+        <option value="2">Salto 2</option><option value="3">Salto 3</option><option value="4">Salto 4</option>
+      </select></label>
+      <label>Gota (sobrepasar el punto antes de girar) <input id="gota" type="checkbox"></label>
+      <label id="xhL">Cuadrícula cruzada (2ª pasada a 90°) <input id="xh" type="checkbox"></label>
+      <label id="vs2L">Sector: 2ª pasada girada 30° <input id="vs2" type="checkbox"></label>
+      <label>Ver trayectoria prevista <input id="trail" type="checkbox"></label>
+      <label>Nombre del fichero .pln <input id="fname"></label>
+    </div>
+  </details>
+
+  <details class="card" id="fplCard">
+    <summary>📝 Plan de vuelo ICAO (VATSIM)</summary>
+    <div class="body">
+      <div class="grid3">
+        <label>Indicativo <input id="cs" placeholder="ECGCM"></label>
+        <label>Reglas <select id="rules" title="Qué tramos vuelas en IFR. La letra (I/V/Y/Z) y los cambios se calculan solos; desde/hacia LELL se cambia en SLL.">
+          <option value="I">IFR todo el vuelo</option><option value="V">VFR todo el vuelo</option>
+          <option value="Y">Tránsitos IFR, zona VFR</option><option value="Z">Tránsitos VFR, zona IFR</option>
+        </select></label>
+        <label>Tipo de vuelo <select id="ftype">
+          <option value="X">X · otro (SAR, survey)</option><option value="G">G · aviación general</option>
+          <option value="M">M · militar</option><option value="N">N · no regular</option>
+        </select></label>
+      </div>
+      <div class="grid3">
+        <label>EOBT (UTC) <input id="eobt" placeholder="HHMM" maxlength="4"></label>
+        <label>Alternativo <input id="altn" list="apts" placeholder="LEBL"></label>
+        <label>STS/ <input id="sts" placeholder="auto"></label>
+      </div>
+      <div class="grid2">
+        <label>Operador (OPR/) <input id="opr" placeholder="p. ej. SALVAMENTO MARITIMO"></label>
+        <label>Equipo (casilla 10) <input id="equip" placeholder="auto según avión"></label>
+      </div>
+      <label>Observaciones (RMK/) <input id="rmk" placeholder="automático según la misión"></label>
+      <textarea id="fplOut" readonly rows="7"></textarea>
+      <div class="grid3">
+        <button id="fplCopy" class="small">📋 Copiar</button>
+        <button id="fplVatsim" class="sec small" title="Abre la página de prefile de VATSIM (pega el plan allí)">VATSIM ↗</button>
+        <button id="fplSimbrief" class="sec small" title="Abre SimBrief con salida, destino, avión y ruta rellenados">SimBrief ↗</button>
+      </div>
+    </div>
+  </details>
+
+  <details class="card" id="misCard">
+    <summary>💾 Misiones guardadas</summary>
+    <div class="body">
+      <div class="grid2">
+        <input id="mName" placeholder="Nombre de la misión">
+        <button id="mSave" class="small">Guardar misión</button>
+      </div>
+      <div class="grid2">
+        <select id="mList"></select>
+        <div class="grid2"><button id="mLoad" class="sec small">Cargar</button><button id="mDel" class="sec small">Borrar</button></div>
+      </div>
+      <div class="grid2">
+        <button id="mExport" class="sec small">⬇ Exportar todas</button>
+        <label class="filebtn sec small">⬆ Importar<input id="mImport" type="file" accept=".json" hidden></label>
+      </div>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>❔ Ayuda</summary>
+    <div class="body hint legend">
+      <p><b>Cómo se usa:</b> ① elige avión y aeropuertos · ② qué vas a hacer · ③ dibuja la zona o elige un patrón · pulsa ✨ · guarda en el GTN750 o copia el plan ICAO.</p>
+      <p>Clic en el mapa = mover el CSP (rojo). Arrastra el punto azul = rumbo y tamaño del patrón.</p>
+      <p><span><i style="color:var(--std)">Gris cursiva</i> = valor estándar</span> · <span style="color:var(--ok)">verde</span> = lo ha cambiado ✨</p>
+      <p>Guardar en GTN750: la primera vez elige la carpeta y se recuerda (clic derecho en el botón para cambiarla):<br>D:\MSFS2024\Packages\Community\pms50-instrument-gtn750\fpl\gtn750</p>
+      <p>Datos de aeropuertos, fixes, SID y STAR: <code>python scripts/exportar_aeropuertos.py</code> (desde Little Navmap).</p>
+    </div>
+  </details>
+  <datalist id="apts"></datalist>
+</div>
+<footer>
+  <div id="partBox" class="grid2">
+    <label>Vuelo <select id="part"></select></label>
+    <button id="saveAll" class="sec small" title="Guarda todos los vuelos en la carpeta del GTN750 (fpl_1, fpl_2…)">Guardar todos</button>
+  </div>
+  <div id="stats"></div>
+  <div id="warn"></div>
+  <div class="grid2" style="margin-top:8px">
+    <button id="save">Guardar en GTN750</button>
+    <button id="dl" class="sec">Descargar .pln</button>
+  </div>
+  <button id="kb" class="sec" style="width:100%;margin-top:6px">🗒 Hoja de vuelo (kneeboard)</button>
+  <div id="msg"></div>
+</footer>
+</div>
+<div id="map"></div>
+
+<script src="app/geo.js"></script>
+<script src="app/ui.js"></script>
+</body>
+</html>
