@@ -79,6 +79,17 @@ $('sarbase').addEventListener('change', () => {
   update();
 });
 // Sin base SAR: quitar del plan lo que puso la base (operador y tipo de vuelo militar), no lo que escribiste tú
+// Cobertura «a medida» en el selector «Cómo de a fondo» (la que elige ✨ Mejor patrón si tu avión no puede volar
+// las de la lista); se sustituye en el siguiente cálculo
+function ensureCf(c) {
+  const v = String(+(+c).toFixed(2));
+  $('cf').querySelector('[data-custom]')?.remove();
+  if (![...$('cf').options].some(o => o.value === v)) {
+    const o = new Option(`A medida (C ${v.replace('.', ',')} ≈ ${Math.round((1 - Math.exp(-c)) * 100)} %)`, v);
+    o.dataset.custom = '1'; $('cf').add(o, 0);
+  }
+  $('cf').value = v;
+}
 function clearSarFpl() {
   if (Object.values(SAR_UNITS).some(u => u.opr === $('opr').value)) $('opr').value = '';
   if ($('ftype').value === 'M') $('ftype').value = 'X';
@@ -183,6 +194,7 @@ for (const f of FIELDS) {
   if (['park', 'sid', 'star', 'rwyDep', 'rwyArr'].includes(f)) continue;
   $(f).type === 'checkbox' ? ($(f).checked = v) : ($(f).value = v);
 }
+if (saved.cf) ensureCf(saved.cf);
 fillPositions(saved.park ?? '');
 fillProcs(saved.sid ?? DEFAULTS.sid, saved.star ?? DEFAULTS.star, saved.rwyDep ?? '', saved.rwyArr ?? '');
 
@@ -387,9 +399,9 @@ function bestSearch() {
     // VS: datum preciso y objeto pequeño; el radio crece hasta que caben los giros de 120° (máx. 5 NM)
     const vsR = Math.max(b.R, 4 * radius);
     const type = only || (/^piw|surf|debris/.test(obj) && b.R <= 3 && vsR <= 5 ? 'VS' : b.R <= 6 && b.S >= 2 * radius ? 'SS' : 'AREA');
-    // Cobertura de la lista → modo SAR; si solo cabe una menor (avión rápido), separación a mano
-    if ([0.5, 1, 1.5, 2].includes(b.C)) { if (!$('covSar').checked) $('covSar').click(); $('cf').value = String(b.C); }
-    else { if (!$('covMan').checked) $('covMan').click(); $('sp').value = $('spman').value = fmt(b.S * NM / unitM()); }
+    // Siempre en modo SAR (sus ajustes siguen a la vista); si solo cabe una cobertura menor, se añade «a medida»
+    if (!$('covSar').checked) $('covSar').click();
+    ensureCf(b.C);
     $('type').value = type; $('auto').checked = true; $('il').value = 'auto'; $('gota').checked = false;
     // Barrido: pasadas paralelas a un lado del cuadrado (en diagonal salen pasadas cortísimas en las esquinas)
     if (type === 'AREA') { setArea([45, 135, 225, 315].map(a => proj(d.datum, d.driftBrg + a, b.R * NM * Math.SQRT2))); $('auto').checked = false; $('hdg').value = Math.round(d.driftBrg) % 180; }
@@ -1315,6 +1327,7 @@ function listMissions(sel) {
 }
 const currentState = () => Object.fromEntries(FIELDS.map(f => [f, $(f).type === 'checkbox' ? $(f).checked : $(f).value]));
 function applyState(st) {
+  if (st.cf) ensureCf(st.cf); // cobertura a medida guardada en la misión
   for (const f of FIELDS) if (f in st && !['park', 'sid', 'star', 'rwyDep', 'rwyArr'].includes(f)) $(f).type === 'checkbox' ? ($(f).checked = st[f]) : ($(f).value = st[f]);
   prevType = $('type').value; prevUnit = $('unit').value;
   fillPositions(st.park ?? ''); fillProcs(st.sid ?? '', st.star ?? '', st.rwyDep ?? '', st.rwyArr ?? '');
