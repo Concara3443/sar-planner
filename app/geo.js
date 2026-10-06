@@ -478,6 +478,36 @@ function sweepWidth({ craft, obj, altFt, visNm, sea = 0, pfd = false, fatigue = 
   return w;
 }
 
+// ---------- Deriva: dónde estará el objeto (datum) y qué área buscar (USCG SAR Addendum, apéndice H) ----------
+// Vectores en nudos como [norte, este]; dirección = hacia dónde va
+const vec = (deg, kt) => [kt * Math.cos(deg * RAD), kt * Math.sin(deg * RAD)];
+// Corriente por viento (H.3.1.1, tabla H-1a) con el mismo viento las últimas 48 h: suma de los 8 periodos de 6 h
+function windCurrent(lat, wdir, wkt) {
+  if (Math.abs(lat) < 2.5) return vec(wdir + 180, 0.05 * wkt);
+  const col = Math.min(12, Math.max(0, Math.round(Math.abs(lat) / 5) - 1)); // columna más cercana, sin interpolar
+  return WIND_CURRENT_N.reduce(([n, e], [ang, f]) => { const [a, b] = vec(wdir + ang[col], wkt * f[col]); return [n + a, e + b]; }, [0, 0]);
+}
+// Leeway (H.3.4.1): velocidad según el viento y divergencia a cada lado del viento
+function leeway(obj, wkt) {
+  const [, , slope, y0, div] = LEEWAY.find(l => l[0] === obj) || LEEWAY[0];
+  return { kt: Math.max(0, wkt >= 6 ? slope * wkt + y0 : (slope + y0 / 6) * wkt), div };
+}
+// Datum tras `hours` horas a la deriva desde lkp. Dos datums (leeway a izquierda y derecha del viento) y su punto medio.
+// E = √(X² + Y² + De²) por datum (Y = 0,1 NM: el buscador navega con GPS); De = 0,3 × deriva (regla del IAMSAR vol. II,
+// no viene en el addendum). Con dos datums, E total = E + media distancia entre ellos (H.3.7 d). Radio de búsqueda
+// R = 1,1 × E total (factor óptimo de la primera búsqueda, H.3.9). Distancias en NM.
+function driftDatum({ lkp, hours, wdir = 0, wkt = 0, obj = 'piw', x = 0.1, wc = true, sea = { dir: 0, kt: 0 } }) {
+  const c = wc ? windCurrent(lkp[0], wdir, wkt) : [0, 0], s = vec(sea.dir, sea.kt), lw = leeway(obj, wkt);
+  const twc = [c[0] + s[0], c[1] + s[1]];
+  const at = side => { const l = vec(wdir + 180 + side * lw.div, lw.kt), n = twc[0] + l[0], e = twc[1] + l[1];
+    return { pos: proj(lkp, Math.atan2(e, n) / RAD, Math.hypot(n, e) * hours * NM), nm: Math.hypot(n, e) * hours }; };
+  const L = at(-1), Rt = at(1), datum = proj(L.pos, brg(L.pos, Rt.pos), dist(L.pos, Rt.pos) / 2);
+  const driftNm = (L.nm + Rt.nm) / 2, E = Math.sqrt(x * x + 0.01 + (0.3 * driftNm) ** 2);
+  const Etot = E + dist(L.pos, Rt.pos) / NM / 2;
+  return { dL: L.pos, dR: Rt.pos, datum, driftNm, driftBrg: driftNm > 0.01 ? brg(lkp, datum) : 0,
+    lwKt: lw.kt, div: lw.div, twcKt: Math.hypot(...twc), E: Etot, R: 1.1 * Etot };
+}
+
 // ---------- Ruta: puntos intermedios, SID/STAR, rumbo óptimo y plan de vuelo ICAO ----------
 
 // Coordenada en formato ICAO de la casilla 15: 4124N00157E (grados y minutos)

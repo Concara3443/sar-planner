@@ -21,3 +21,37 @@ const SWEEP_SPEED_ROW = { "Person in Water": "piw", "Raft 1 person": "r14", "Raf
 // Objetos pequeños para la altitud (H.3.5.4 c): no buscarlos por encima de 1000 ft. SWEEP_SMALL (arriba) es la otra lista,
 // la de la corrección por tiempo (tabla H-10: persona, balsa o barco de menos de 30 ft).
 const SWEEP_TINY = ["Person in Water", "Raft 1 person", "Raft 4 person", "Raft 6 person", "Power Boat <=15 ft"];
+// Deriva por viento sobre el objeto (leeway), tabla H-7 y H-7A: [clave, nombre, pendiente, ordenada (kt), divergencia (°)].
+// Velocidad (kt) = pendiente × viento + ordenada con viento ≥ 6 kt; por debajo, (pendiente + ordenada/6) × viento.
+const LEEWAY = [
+  ['piw', 'Persona en el agua (sin más datos)', 0.011, 0.07, 30], ['piwV', 'Persona vertical (consciente, sin chaleco)', 0.005, 0.07, 18],
+  ['piwS', 'Persona sentada (con chaleco)', 0.012, 0.00, 18], ['piwSuit', 'Persona con traje de supervivencia', 0.014, 0.10, 30],
+  ['piwDead', 'Persona fallecida', 0.015, 0.08, 30],
+  ['raftNB', 'Balsa sin lastre', 0.042, 0.03, 28], ['raftNBc', 'Balsa sin lastre, con toldo, sin ancla', 0.037, 0.11, 24],
+  ['raftSB', 'Balsa con lastre poco profundo y toldo', 0.029, 0.00, 22], ['raftDB', 'Balsa con lastre profundo y toldo', 0.030, 0.02, 13],
+  ['raftDB46', 'Balsa de lastre profundo, 4-6 personas', 0.029, 0.04, 15], ['raftDB1525', 'Balsa de lastre profundo, 15-25 personas', 0.036, -0.09, 10],
+  ['raftCap', 'Balsa volcada', 0.009, 0.00, 12], ['raftAvi', 'Balsa de avión, 4-6 personas, sin ancla', 0.037, 0.11, 24],
+  ['slide', 'Tobogán-balsa de evacuación de avión', 0.028, -0.01, 15], ['refugee', 'Balsa improvisada sin vela', 0.015, 0.17, 17],
+  ['kayak', 'Kayak con persona', 0.011, 0.24, 15], ['surf', 'Tabla de surf con persona', 0.020, 0.00, 15],
+  ['windsurf', 'Windsurf con persona y vela en el agua', 0.023, 0.10, 12],
+  ['sailFull', 'Velero de quilla larga', 0.030, 0.00, 48], ['sailFin', 'Velero de quilla de aleta', 0.040, 0.00, 48],
+  ['skiffV', 'Bote de casco en V', 0.030, 0.08, 15], ['skiffSw', 'Bote inundado', 0.017, 0.00, 15],
+  ['sport', 'Lancha con cabina', 0.069, -0.08, 19], ['fisher', 'Pesquero deportivo de consola central', 0.060, -0.09, 22],
+  ['fv', 'Pesquero comercial', 0.037, 0.02, 48], ['freighter', 'Carguero costero', 0.028, 0.00, 48], ['debris', 'Restos de un pesquero', 0.020, 0.00, 10],
+];
+// Corriente por viento, tabla H-1a (latitudes norte 5°-65°, de 5 en 5): por cada uno de los 8 periodos de 6 h anteriores,
+// [ángulo que se suma a la dirección DE DONDE viene el viento, factor de la velocidad del viento]. En el ecuador, 5 % a favor del viento.
+// ponytail: solo hemisferio norte (tabla H-1b para el sur si hiciera falta)
+const WIND_CURRENT_N = [
+  [[185, 190, 196, 200, 205, 210, 214, 217, 221, 224, 226, 228, 230], [0.029, 0.028, 0.028, 0.027, 0.027, 0.026, 0.025, 0.024, 0.023, 0.022, 0.021, 0.020, 0.020]],
+  [[203, 226, 249, 271, 292, 312, 332, 350, 7, 22, 36, 49, 59], [0.012, 0.012, 0.012, 0.011, 0.011, 0.011, 0.011, 0.010, 0.010, 0.009, 0.009, 0.009, 0.008]],
+  [[219, 258, 296, 333, 9, 43, 76, 107, 136, 162, 186, 207, 224], [0.009, 0.009, 0.009, 0.009, 0.008, 0.008, 0.008, 0.008, 0.007, 0.007, 0.007, 0.007, 0.006]],
+  [[235, 289, 342, 35, 85, 134, 180, 223, 264, 301, 334, 3, 28], [0.008, 0.008, 0.008, 0.007, 0.007, 0.007, 0.007, 0.006, 0.006, 0.006, 0.006, 0.006, 0.005]],
+  [[250, 320, 29, 96, 162, 224, 283, 339, 31, 79, 121, 159, 192], [0.007, 0.007, 0.007, 0.006, 0.006, 0.006, 0.006, 0.006, 0.005, 0.005, 0.005, 0.005, 0.004]],
+  [[266, 352, 76, 158, 238, 314, 27, 95, 159, 217, 269, 315, 355], [0.006, 0.006, 0.006, 0.006, 0.006, 0.005, 0.005, 0.005, 0.004, 0.004, 0.004, 0.004, 0.004]],
+  [[282, 23, 123, 220, 314, 44, 130, 211, 286, 355, 56, 111, 158], [0.006, 0.006, 0.006, 0.005, 0.005, 0.005, 0.005, 0.004, 0.004, 0.004, 0.004, 0.003, 0.003]],
+  [[298, 54, 169, 281, 30, 134, 233, 327, 53, 132, 204, 267, 321], [0.005, 0.005, 0.005, 0.005, 0.005, 0.004, 0.004, 0.004, 0.004, 0.003, 0.003, 0.003, 0.003]],
+];
+// Error de la posición inicial X (NM), tabla H-2 y apartado H.3.3.1 (si no se sabe cómo navegaba)
+const POS_ERROR = [['GPS / baliza 406 con GPS', 0.1], ['Radar', 1], ['Baliza SARSAT (Doppler)', 3], ['Desconocido: barco', 5],
+  ['Desconocido: avión bimotor', 10], ['Desconocido: embarcación o monomotor', 15]];

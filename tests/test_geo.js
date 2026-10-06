@@ -5,7 +5,7 @@ const geo = fs.readFileSync(path.join(dir, "data/iamsar.js"), "utf8") + "\n" + f
 for (const f of fs.readdirSync(path.join(dir, "app")).filter(f => f.endsWith(".js"))) // sintaxis de todos los .js
   new Function(fs.readFileSync(path.join(dir, "app", f), "utf8"));
 const g = new Function(geo + `;return {buildPattern, buildPln, departurePosition, sweepWidth, bestAreaRoute, polyAreaM2, splitPlan,
-  icaoCoord, resolveVia, procPoints, bestHeading, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc}`)();
+  icaoCoord, resolveVia, procPoints, bestHeading, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc, driftDatum, leeway, windCurrent}`)();
 const { NM } = g, c = [41.4, 2.0], R = g.turnRadius(120, 25);
 const at = (n, e) => g.proj(g.proj(c, 0, n * NM), 90, e * NM);
 const legStr = w => w.slice(1).map((x, i) => (g.dist(w[i].pos, x.pos) / NM).toFixed(1) + "@" + Math.round(g.brg(w[i].pos, x.pos)));
@@ -198,4 +198,20 @@ ok("giros del GTN750 (recorte, radio repartido, alargar legs)");
   assert.equal(g.bestProc(procs, "XXXX", "STAR", null, c, c), "");
 }
 ok("pista por viento y mejor SID/STAR");
+{ // Deriva: ejemplos del propio addendum y comprobaciones de dirección
+  assert.equal(+g.leeway("piw", 15).kt.toFixed(3), 0.235);      // ej. 1: 0,011·15 + 0,07 (con ordenada redondeada de la tabla)
+  assert.equal(+g.leeway("raftDB46", 20).kt.toFixed(3), 0.62);  // ej. 2: 0,029·20 + 0,04
+  assert.equal(+g.leeway("piw", 3).kt.toFixed(4), 0.0680);      // viento < 6 kt: (0,011 + 0,07/6)·3
+  const wc = g.windCurrent(40, 0, 20); // viento del norte a 40°N: corriente hacia el sur y desviada a la derecha (oeste)
+  assert(wc[0] < 0 && wc[1] < 0, wc);
+  // Sin corriente, viento del norte 20 kt, 10 h: los datums quedan al sur, a ambos lados; el medio, al sur del LKP
+  const d = g.driftDatum({ lkp: c, hours: 10, wdir: 0, wkt: 20, obj: "piw", wc: false });
+  // cada datum recorre 0,29 kt × 10 h = 2,9 NM a 30° del viento; mirando a sotavento (sur) la izquierda es el este
+  assert(Math.abs(d.driftBrg - 180) < 1 && Math.abs(d.driftNm - 2.9) < 0.01, JSON.stringify(d));
+  assert(g.brg(c, d.dL) < 180 && g.brg(c, d.dR) > 180 && d.R > d.E && d.E > 0.3 * d.driftNm);
+  // Corriente marina sola, sin viento: va donde la corriente
+  const s = g.driftDatum({ lkp: c, hours: 4, wkt: 0, wc: false, sea: { dir: 90, kt: 1 } });
+  assert(Math.abs(s.driftNm - 4) < 0.01 && Math.abs(s.driftBrg - 90) < 1);
+}
+ok("deriva: leeway, corriente por viento y datum");
 console.log("TODO OK");
