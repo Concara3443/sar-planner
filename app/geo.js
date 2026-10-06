@@ -467,6 +467,7 @@ function interp(xs, ys, x) {
 // W corregida en NM. sea: 0 calma, 1 moderado, 2 fuerte (tabla H-10). pfd: chaleco (x4 hasta 500 ft). fatigue: x0,9
 // W corregida = W sin corregir × tiempo (H-10) × fatiga × velocidad (H-9, solo si se da tas) — apartado H.3.5.2
 function sweepWidth({ craft, obj, altFt, visNm, sea = 0, pfd = false, fatigue = false, tas }) {
+  if (obj in SWEEP_FIXED) return SWEEP_FIXED[obj] * (fatigue ? 0.9 : 1); // señales: valor fijo de las tablas H-20 a H-24
   const t = SWEEP[craft], alts = Object.keys(t).map(Number).sort((a, b) => a - b);
   const wAt = a => interp(SWEEP_VIS, t[a][obj], visNm);
   let w = interp(alts, alts.map(wAt), altFt);

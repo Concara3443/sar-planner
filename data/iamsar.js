@@ -55,3 +55,11 @@ const WIND_CURRENT_N = [
 // Error de la posición inicial X (NM), tabla H-2 y apartado H.3.3.1 (si no se sabe cómo navegaba)
 const POS_ERROR = [['GPS / baliza 406 con GPS', 0.1], ['Radar', 1], ['Baliza SARSAT (Doppler)', 3], ['Desconocido: barco', 5],
   ['Desconocido: avión bimotor', 10], ['Desconocido: embarcación o monomotor', 15]];
+// Señales y luces: anchura de barrido fija desde el aire (NM), tablas H-20 a H-24 (no dependen de altitud ni visibilidad).
+// Se añaden como grupo a SWEEP_OBJ. Bengala de mano y estroboscópica: valores medidos con helicópteros.
+const SWEEP_FIXED = { 'Strobe 50k': 4.4, 'Strobe 2k': 0.5, 'Cyalume': 1.0, 'Flashlight': 3.0, 'Hand flare': 15.4, 'Parachute flare': 10.0,
+  'Signal mirror': 5.0, 'Orange smoke': 7.7, 'Dye marker': 2.0, 'Flag': 2.5, 'White parachute': 5.0 };
+SWEEP_OBJ.push(['Señales y luces (H-20 a H-24)', [['Strobe 50k', 'De noche: luz estroboscópica de chaleco o aro'], ['Strobe 2k', 'De noche: luz estroboscópica pequeña'],
+  ['Cyalume', 'De noche: barra luminosa'], ['Flashlight', 'De noche: linterna o farol SOS'], ['Hand flare', 'De noche: bengala de mano roja'],
+  ['Parachute flare', 'Bengala con paracaídas'], ['Signal mirror', 'De día: espejo de señales'], ['Orange smoke', 'De día: humo naranja (viento ≤ 10 kt)'],
+  ['Dye marker', 'De día: tinte verde en el agua'], ['Flag', 'De día: bandera agitada'], ['White parachute', 'De día: paracaídas blanco']]]);

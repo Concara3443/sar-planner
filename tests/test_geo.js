@@ -71,6 +71,7 @@ assert.equal(W({ craft: "plane", obj: "Raft 6 person", altFt: 5000, visNm: 50 })
 assert.equal(W({ craft: "plane", obj: "Raft 6 person", altFt: 1000, visNm: 10, tas: 120 }), 2.42);
 assert.equal(W({ craft: "plane", obj: "Raft 6 person", altFt: 1000, visNm: 10, tas: 250 }), 1.98);
 assert.equal(W({ craft: "heli", obj: "Person in Water", altFt: 300, visNm: 10, pfd: true, tas: 105 }), 0.36);
+assert.equal(W({ craft: "plane", obj: "Strobe 50k", altFt: 3000, visNm: 1, sea: 2, tas: 250 }), 4.4); // señal: fija
 ok("tablas IAMSAR: valores, interpolación y correcciones");
 
 // ---------- Viento ----------
