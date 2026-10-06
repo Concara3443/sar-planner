@@ -140,11 +140,11 @@ function fillPositions(keep) {
 // ---------- Estado de los campos ----------
 const FIELDS = ['type', 'lat', 'lon', 'hdg', 'unit', 'len', 'sp', 'n', 'dir', 'vs2', 'xh', 'tas', 'bank', 'alt', 'gota', 'wdir', 'wkt', 'walign', 'wreal', 'acft', 'il', 'auto', 'area', 'trail', 'cov', 'spman', 'sobj', 'pfd', 'craft', 'vis', 'sea', 'cf', 'fat', 'fov', 'ov', 'agl', 'px', 'dep', 'park', 'arr', 'fname', 'cruise', 'sid', 'star', 'viaOut', 'viaBack',
   'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'sarbase', 'rwyDep', 'rwyArr',
-  'drift', 'lkpLat', 'lkpLon', 'dObj', 'dHours', 'dX', 'dWc', 'dCdir', 'dCkt'];
+  'endur', 'resv', 'drift', 'lkpLat', 'lkpLon', 'dObj', 'dHours', 'dX', 'dWc', 'dCdir', 'dCkt'];
 const DIST = ['len', 'sp', 'spman'];
 const DEFAULTS = { type: 'PS', lat: 41.392957, lon: 1.944372, hdg: 45, unit: 'NM', dir: '1', vs2: false, gota: false, acft: 'custom', wdir: 0, wkt: 0, walign: false, wreal: false, il: '1', auto: true, area: '', trail: true, cov: 'sar', spman: '', sobj: 'Raft 6 person', pfd: false, craft: 'plane', vis: 10, sea: '0', cf: '1', fat: false, fov: 54, ov: 30, agl: '', px: 6000, cruise: '', sid: 'auto', star: 'auto', viaOut: '', viaBack: '',
                    cs: 'ECGCM', rules: 'I', ftype: 'X', eobt: '', altn: '', sts: '', opr: '', equip: '', rmk: '', sarbase: '', rwyDep: '', rwyArr: '',
-                   drift: false, lkpLat: '', lkpLon: '', dObj: 'piw', dHours: 2, dX: '0.1', dWc: true, dCdir: 0, dCkt: 0,
+                   endur: '', resv: 30, drift: false, lkpLat: '', lkpLon: '', dObj: 'piw', dHours: 2, dX: '0.1', dWc: true, dCdir: 0, dCkt: 0,
                    dep: 'LELL', park: '', arr: 'LELL', fname: 'fpl', ...STD_COMMON, ...STD.PS };
 const fmt = v => +(+v).toFixed(3);
 const unitM = () => UNIT_M[$('unit').value];
@@ -515,12 +515,35 @@ function update() {
     return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
   };
   lastTimes = { pat: tPat, tr: tTr };
+  // Autonomía: con la reserva final, ¿llegas, completas el plan y vuelves? Si no, punto de no retorno (PNR):
+  // el último punto del recorrido desde el que aún puedes volver directo al destino.
+  const endur = +$('endur').value * 60, avail = endur - (+$('resv').value || 0) * 60;
+  let fuelRow = null, fuelWarn = '';
+  if (endur > 0 && tas) {
+    const home = A ? A.pos : path[path.length - 1], back = q => pathTime([q, home], tas, wind);
+    let t = 0, pnr = path.length - 1;
+    for (let i = 0; i < path.length; i++) {
+      if (i) t += pathTime([path[i - 1], path[i]], tas, wind);
+      if (t + back(path[i]) > avail) { pnr = i - 1; break; }
+    }
+    if (tPat + tTr <= avail) fuelRow = ['Autonomía', `te sobran ${min(avail - tPat - tTr)} (en zona hasta ${min(avail - tTr)})`];
+    else {
+      const q = path[Math.max(0, pnr)], done = pnr <= patStart ? 0 : Math.min(1, len(path.slice(patStart, Math.min(pnr, patEnd) + 1)) / tot);
+      L.marker(q, { icon: L.divIcon({ className: '', html: '<div style="font-size:20px;filter:drop-shadow(0 0 2px #000)">⛽</div>', iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 1500 })
+        .bindTooltip('Punto de no retorno: desde aquí vuelve al destino').addTo(layer);
+      fuelRow = ['Autonomía', `<span style="color:var(--warn)">faltan ${min(tPat + tTr - avail)}</span>`];
+      fuelWarn = `<span style="color:var(--warn)">⛽ Con ${$('endur').value} min de autonomía y ${$('resv').value || 0} de reserva no completas el plan: `
+        + (pnr < patStart ? 'ni siquiera llegas a la zona y vuelves.' : `vuelve en el ⛽ del mapa (habrás hecho el ${Math.round(done * 100)} % del patrón).`)
+        + ' Divide la zona, reposta más cerca o sal de una base más próxima.</span>';
+    }
+  }
   $('stats').innerHTML = [
     ['Waypoints', wpts.length],
     ['Patrón', `${showD(tot)} · ${min(tPat)}`],
     ['Tránsito', `${showD(transit)} · ${min(tTr)}`],
     ['Total', `${min(tPat + tTr)}` + (wind.kt > 0 ? ` (viento ${String(Math.round(wind.dir)).padStart(3, '0')}°/${wind.kt} kt)` : '')],
     ['Radio de giro (GTN)', `${showD(p.radius)} (${Math.round(p.radius)} m)`],
+    ...(fuelRow ? [fuelRow] : []),
   ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
 
   // Avisos con botones de corrección: cada botón lleva data-set="campo=valor;campo=valor"
@@ -578,6 +601,7 @@ function update() {
     if (grow) warn += fixBtn(`Agrandar ${grow.fs.length > 1 ? 'patrón' : grow.fs[0] === 'sp' ? 'S' : 'legs'} ×${grow.k.toFixed(2)}`,
       grow.fs.map(f => `${f}=${fmt(+$(f).value * grow.k)}`).join(';'));
   }
+  if (fuelWarn) warn += (warn ? '<br>' : '') + fuelWarn;
   if (oranges.length) warn += (warn ? '<br>' : '') + `<span style="color:#ff9f1c">${oranges.length} giro${oranges.length > 1 ? 's' : ''} muy cerrado${oranges.length > 1 ? 's' : ''} (en naranja en el mapa): el avión no pasará exactamente por ese waypoint. Pasa el ratón por encima para ver cuánto.</span>`;
   // El GTN750 real admite 100 waypoints por plan (contando los aeropuertos)
   if (nParts > 1) warn += (warn ? '<br>' : '') + `<span style="color:var(--muted)">El plan completo tiene ${allW.length + pre.length + post.length + 2} waypoints y el GTN750 admite 100: `

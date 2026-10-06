@@ -35,6 +35,7 @@ Datos (aeropuertos, fixes, SID, STAR): `python scripts/exportar_aeropuertos.py` 
 - [x] Bases SAR reales (Salvamento Marítimo y Ejército del Aire, `data/sarbases.js`): salida/destino, OPR/, tipo y STS/SAR del FPL; «la más cercana a la zona»
 - [x] Pista de salida/llegada (auto por viento: METAR o campos de viento) que filtra las SID/STAR; «✨ La mejor» elige la que acorta el camino a la zona
 - [x] Deriva (apéndice H): última posición, objeto (27 tipos de la tabla H-7), horas perdido, corriente por viento y marina → datum al llegar, error probable y cuadrado de búsqueda; botones para poner el CSP o el área
+- [x] Autonomía y reserva (las pones tú): tiempo en zona que te sobra o punto de no retorno ⛽ en el mapa y % del patrón que harías
 
 ## A tener en cuenta
 - Velocidades, equipos ICAO y consumos de cada avión son orientativos (tablas `PROFILES` y `FPL_EQ` en `app/ui.js`).
