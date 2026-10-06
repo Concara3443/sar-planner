@@ -63,3 +63,10 @@ SWEEP_OBJ.push(['Señales y luces (H-20 a H-24)', [['Strobe 50k', 'De noche: luz
   ['Cyalume', 'De noche: barra luminosa'], ['Flashlight', 'De noche: linterna o farol SOS'], ['Hand flare', 'De noche: bengala de mano roja'],
   ['Parachute flare', 'Bengala con paracaídas'], ['Signal mirror', 'De día: espejo de señales'], ['Orange smoke', 'De día: humo naranja (viento ≤ 10 kt)'],
   ['Dye marker', 'De día: tinte verde en el agua'], ['Flag', 'De día: bandera agitada'], ['White parachute', 'De día: paracaídas blanco']]]);
+// Qué tabla de anchura de barrido usar para cada objeto de LEEWAY (el más parecido de SWEEP_OBJ)
+const LEEWAY_SWEEP = { piw: 'Person in Water', piwV: 'Person in Water', piwS: 'Person in Water', piwSuit: 'Person in Water', piwDead: 'Person in Water',
+  raftNB: 'Raft 4 person', raftNBc: 'Raft 4 person', raftSB: 'Raft 4 person', raftDB: 'Raft 6 person', raftDB46: 'Raft 4 person',
+  raftDB1525: 'Raft 15 person', raftCap: 'Raft 4 person', raftAvi: 'Raft 4 person', slide: 'Raft 6 person', refugee: 'Raft 8 person',
+  kayak: 'Power Boat <=15 ft', surf: 'Person in Water', windsurf: 'Power Boat <=15 ft', sailFull: 'Sail Boat 30 ft', sailFin: 'Sail Boat 30 ft',
+  skiffV: 'Power Boat <=15 ft', skiffSw: 'Power Boat <=15 ft', sport: 'Power Boat 20 ft', fisher: 'Power Boat 33 ft', fv: 'Power Boat 53 ft',
+  freighter: 'Ship 120 ft', debris: 'Person in Water' };

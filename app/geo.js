@@ -509,6 +509,25 @@ function driftDatum({ lkp, hours, wdir = 0, wkt = 0, obj = 'piw', x = 0.1, wc = 
     lwKt: lw.kt, div: lw.div, twcKt: Math.hypot(...twc), E: Etot, R: 1.1 * Etot };
 }
 
+// erf de Abramowitz y Stegun 7.1.26 (error < 1,5·10⁻⁷)
+function erf(x) {
+  const t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return x < 0 ? -y : y;
+}
+// Probabilidad de que el objeto esté en el cuadrado de lado 2R centrado en el datum (normal circular con error probable E)
+const pocSquare = (R, E) => erf(R / (E / 1.1774) / Math.SQRT2) ** 2;
+// Mejor reparto del esfuerzo (apartado H.3.9): con el esfuerzo disponible Z = W·V·T (NM²), de las coberturas que ofrece
+// la página (C = 0,5 / 1 / 1,5 / 2) la que da más POS = POC × POD, con un cuadrado de lado √(Z/C) (como mucho 6E: ya
+// contiene más del 99 %). POD = 1 − e^(−C), la curva de condiciones normales. Sin límite de tiempo: la primera búsqueda
+// clásica del IAMSAR, C = 1 y R = 1,1·E. E, W y R en NM; hours = horas en la zona.
+function bestEffort(E, W, Vkt, hours) {
+  const plan = (C, R) => { const POC = pocSquare(R, E), POD = 1 - Math.exp(-C); return { C, R, S: W / C, POC, POD, POS: POC * POD }; };
+  if (!(hours > 0 && isFinite(hours))) return plan(1, 1.1 * E);
+  const Z = W * Vkt * hours;
+  return [0.5, 1, 1.5, 2].map(C => plan(C, Math.min(3 * E, Math.sqrt(Z / C) / 2))).reduce((a, b) => (b.POS > a.POS ? b : a));
+}
+
 // ---------- Ruta: puntos intermedios, SID/STAR, rumbo óptimo y plan de vuelo ICAO ----------
 
 // Coordenada en formato ICAO de la casilla 15: 4124N00157E (grados y minutos)

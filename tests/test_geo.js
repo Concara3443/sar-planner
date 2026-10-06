@@ -5,7 +5,7 @@ const geo = fs.readFileSync(path.join(dir, "data/iamsar.js"), "utf8") + "\n" + f
 for (const f of fs.readdirSync(path.join(dir, "app")).filter(f => f.endsWith(".js"))) // sintaxis de todos los .js
   new Function(fs.readFileSync(path.join(dir, "app", f), "utf8"));
 const g = new Function(geo + `;return {buildPattern, buildPln, departurePosition, sweepWidth, bestAreaRoute, polyAreaM2, splitPlan,
-  icaoCoord, resolveVia, procPoints, bestHeading, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc, driftDatum, leeway, windCurrent}`)();
+  icaoCoord, resolveVia, procPoints, bestHeading, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc, driftDatum, leeway, windCurrent, bestEffort}`)();
 const { NM } = g, c = [41.4, 2.0], R = g.turnRadius(120, 25);
 const at = (n, e) => g.proj(g.proj(c, 0, n * NM), 90, e * NM);
 const legStr = w => w.slice(1).map((x, i) => (g.dist(w[i].pos, x.pos) / NM).toFixed(1) + "@" + Math.round(g.brg(w[i].pos, x.pos)));
@@ -215,4 +215,12 @@ ok("pista por viento y mejor SID/STAR");
   assert(Math.abs(s.driftNm - 4) < 0.01 && Math.abs(s.driftBrg - 90) < 1);
 }
 ok("deriva: leeway, corriente por viento y datum");
+{ // Mejor reparto del esfuerzo
+  const u = g.bestEffort(2, 0.5, 120, Infinity); // sin límite: C = 1, R = 1,1·E
+  assert(u.C === 1 && Math.abs(u.R - 2.2) < 1e-9 && Math.abs(u.POC - 0.6475) < 0.01, JSON.stringify(u)); // 64,75 % de H.3.9 (fig. H-24)
+  const poco = g.bestEffort(5, 0.5, 120, 0.5), mucho = g.bestEffort(1, 2, 150, 4);
+  assert(poco.C === 0.5 && mucho.C === 2 && mucho.R === 3, JSON.stringify([poco, mucho])); // poco tiempo: barrer rápido; mucho: a fondo
+  assert(poco.POS < mucho.POS && poco.POS > 0 && mucho.POS < 1);
+}
+ok("mejor reparto del esfuerzo (POC × POD)");
 console.log("TODO OK");

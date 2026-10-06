@@ -37,6 +37,8 @@ Datos (aeropuertos, fixes, SID, STAR): `python scripts/exportar_aeropuertos.py` 
 - [x] Deriva (apéndice H): última posición, objeto (27 tipos de la tabla H-7), horas perdido, corriente por viento y marina → datum al llegar, error probable y cuadrado de búsqueda; botones para poner el CSP o el área
 - [x] Autonomía y reserva (las pones tú): tiempo en zona que te sobra o punto de no retorno ⛽ en el mapa y % del patrón que harías
 - [x] Avión del plan ICAO: el que vuelas o el tipo que escribas (AW139, EC-225, Super Puma, CN-235…), con su estela
+- [x] ✨ Mejor patrón con los datos de la deriva: área, cobertura y patrón (VS/SS/área) que dan más probabilidad de éxito en el tiempo que tienes, medido con el vuelo real
+- [x] Señales y luces como objeto (estroboscópica, bengalas, espejo, humo…; tablas H-20 a H-24)
 
 ## A tener en cuenta
 - Velocidades, equipos ICAO y consumos de cada avión son orientativos (tablas `PROFILES` y `FPL_EQ` en `app/ui.js`).

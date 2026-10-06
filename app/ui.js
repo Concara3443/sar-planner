@@ -87,7 +87,10 @@ function sarBaseInfo() {
     // «La más cercana» y se ha movido la zona: ofrecer cambiar (no se cambia sola para no pisar lo que hayas tocado)
     + ($('dep').value.trim().toUpperCase() !== b.icao ? ` <button class="sec small" data-set="dep=${b.icao};arr=${b.icao}">Salir y volver a ${b.icao}</button>` : '');
 }
-for (const id of ['sarbaseInfo', 'driftInfo']) $(id).addEventListener('click', e => { if (e.target.dataset?.set) applySet(e.target.dataset.set); });
+for (const id of ['sarbaseInfo', 'driftInfo']) $(id).addEventListener('click', e => {
+  if (e.target.dataset?.set) applySet(e.target.dataset.set);
+  if (e.target.dataset?.best) bestSearch();
+});
 // Cambiar la salida a mano deja de usar una base fija (la nota ya no valdría)
 $('dep').addEventListener('change', () => { if (/^\d+$/.test($('sarbase').value) && $('dep').value.trim().toUpperCase() !== sarBase().icao) $('sarbase').value = ''; });
 $('apts').innerHTML = Object.entries(DB).map(([k, a]) => `<option value="${k}">${a[0]}</option>`).join('');
@@ -304,7 +307,9 @@ function coverage() {
 }
 
 // Deriva: datum al llegar a la zona (lo perdido + el tránsito hasta allí), dibujo en el mapa y botones para usarlo
+let lastDrift = null; // último datum calculado (lo usa «✨ Mejor patrón»)
 function driftView(D, p) {
+  lastDrift = null;
   $('driftBox').style.display = $('drift').checked ? '' : 'none';
   const lkp = [+$('lkpLat').value, +$('lkpLon').value];
   if (!$('drift').checked) return;
@@ -313,6 +318,7 @@ function driftView(D, p) {
   const tr = D ? dist(D.pos, lkp) / NM / kt : 0, hours = Math.max(0, +$('dHours').value) + tr;
   const d = driftDatum({ lkp, hours, wdir: p.wind.dir, wkt: p.wind.kt, obj: $('dObj').value, x: +$('dX').value, wc: $('dWc').checked,
     sea: { dir: +$('dCdir').value, kt: +$('dCkt').value } });
+  lastDrift = { d, D, A: apt($('arr').value.trim().toUpperCase()) };
   const R = d.R * NM, sq = [45, 135, 225, 315].map(b => proj(d.datum, d.driftBrg + b, R * Math.SQRT2));
   const opt = { color: '#4dd0e1', weight: 2, interactive: false };
   L.circleMarker(lkp, { radius: 5, color: '#fff', weight: 2, fillColor: '#4dd0e1', fillOpacity: 1 }).bindTooltip('Última posición conocida').addTo(layer);
@@ -326,8 +332,49 @@ function driftView(D, p) {
     + `(leeway ${d.lwKt.toFixed(2).replace('.', ',')} kt ±${d.div}° del viento, corriente ${d.twcKt.toFixed(2).replace('.', ',')} kt). `
     + `Error probable ${f(d.E)} NM (círculo) → buscar un cuadrado de <b>${f(2 * d.R)} × ${f(2 * d.R)} NM</b> (en el mapa).<br>`
     + `<button class="sec small" data-set="lat=${d.datum[0].toFixed(5)};lon=${d.datum[1].toFixed(5)}">Poner el CSP en el datum</button> `
-    + `<button class="sec small" data-set="type=AREA;area=${JSON.stringify(sq.map(([a, b]) => [+a.toFixed(5), +b.toFixed(5)]))}">Buscar en ese cuadrado (área)</button>`
+    + `<button class="sec small" data-set="type=AREA;area=${JSON.stringify(sq.map(([a, b]) => [+a.toFixed(5), +b.toFixed(5)]))}">Buscar en ese cuadrado (área)</button> `
+    + `<button class="small" data-best="1">✨ Mejor patrón con estos datos</button>`
     + (p.wind.kt ? '' : ' <span style="color:var(--warn)">Sin viento no hay leeway: pon el viento en «Avión y vuelo».</span>');
+}
+// ✨ Mejor patrón: con el datum, lo que flota, tu avión y el tiempo que puedes estar en la zona, el área, la cobertura y
+// el patrón que dan más probabilidad de encontrarlo (bestEffort). Patrón según el IAMSAR: sector (VS) para una persona
+// con datum preciso y área pequeña, cuadrado expansivo (SS) para áreas pequeñas, barrido del área (PS) para el resto;
+// VS y SS solo si sus giros caben con tu radio de giro.
+function bestSearch() {
+  if (!lastDrift) return;
+  const { d, D, A } = lastDrift, obj = $('dObj').value, sobj = LEEWAY_SWEEP[obj] || 'Person in Water', tas = +$('tas').value || 120;
+  if (!$('covSar').checked) $('covSar').click();
+  $('sobj').value = sobj;
+  const W = sweepWidth({ craft: $('craft').value, obj: sobj, altFt: +$('alt').value, visNm: +$('vis').value || 10, sea: +$('sea').value,
+    pfd: $('pfd').checked, fatigue: $('fat').checked, tas });
+  // Tiempo en la zona: autonomía − reserva − ir y volver (estimado en línea recta; luego se mide la ruta de verdad)
+  const legs = ((D ? dist(D.pos, d.datum) : 0) + (A ? dist(d.datum, A.pos) : 0)) / NM / tas, endur = +$('endur').value * 60;
+  const avail = endur > 0 ? (endur - (+$('resv').value || 0) * 60) / 3600 : Infinity, hours = avail - legs;
+  if (hours < 0.1) { $('msg').innerHTML = `<span style="color:var(--warn)">Con esa autonomía no te queda tiempo en la zona: solo ir y volver son ${Math.round(legs * 60)} min.</span>`; return; }
+  const radius = params().radius / NM, minR = 3 * radius; // un área más pequeña que eso no se puede volar con tus giros
+  const fit = b => (b.R >= minR ? b : { ...b, R: minR, POC: pocSquare(minR, d.E), POS: pocSquare(minR, d.E) * b.POD });
+  const apply = b => {
+    const type = /^piw|surf|debris/.test(obj) && b.R <= 3 && b.R >= 4 * radius ? 'VS' : b.R <= 6 && b.S >= 2 * radius ? 'SS' : 'AREA';
+    $('cf').value = String(b.C); $('type').value = type; $('auto').checked = true; $('il').value = 'auto';
+    if (type === 'AREA') setArea([45, 135, 225, 315].map(a => proj(d.datum, d.driftBrg + a, b.R * NM * Math.SQRT2)));
+    else { $('lat').value = d.datum[0].toFixed(5); $('lon').value = d.datum[1].toFixed(5); }
+    if (type === 'VS') $('len').value = fmt(b.R * NM / unitM());
+    if (type === 'SS') $('n').value = Math.min(MAX_LEGS, 2 * Math.ceil(2 * b.R / b.S));
+    drawAreaHandles(); update();
+    return type;
+  };
+  // La fórmula del esfuerzo no cuenta giros, tránsitos entre pasadas ni la ruta real (SID/STAR): se mide el vuelo de
+  // verdad y, si no cabe en la autonomía, se repite con menos horas en la zona hasta que quepa
+  let h = hours, b = fit(bestEffort(d.E, W, tas, h)), type = apply(b);
+  for (let k = 0; k < 8 && isFinite(avail) && (lastTimes.pat + lastTimes.tr) / 3600 > avail; k++) {
+    h = Math.max(0.05, h * (avail - lastTimes.tr / 3600) / (lastTimes.pat / 3600) * 0.97);
+    b = fit(bestEffort(d.E, W, tas, h)); type = apply(b);
+  }
+  const f = v => v.toFixed(v < 1 ? 2 : 1).replace('.', ','), pc = v => Math.round(v * 100) + ' %';
+  const name = { VS: 'Sector (VS) centrado en el datum', SS: 'Cuadrado expansivo (SS) desde el datum', AREA: 'Barrido del área alrededor del datum' }[type];
+  $('msg').innerHTML = `✨ <b>${name}</b>: ${type === 'VS' ? `radio ${f(b.R)} NM` : `${f(2 * b.R)} × ${f(2 * b.R)} NM`}, S = ${f(b.S)} NM, cobertura ${String(b.C).replace('.', ',')}`
+    + ` (${isFinite(hours) ? `el patrón dura ${Math.round(lastTimes.pat / 60)} min y el vuelo completo ${Math.round((lastTimes.pat + lastTimes.tr) / 60)} de los ${Math.round(avail * 60)} que tienes` : 'primera búsqueda; pon tu autonomía para ajustarlo a tu tiempo'}).`
+    + `<br>Probabilidad de encontrarlo: está dentro ${pc(b.POC)} × lo ves si está ${pc(b.POD)} = <b>${pc(b.POS)}</b>.`;
 }
 $('lkpCsp').onclick = () => { $('lkpLat').value = $('lat').value; $('lkpLon').value = $('lon').value; update(); };
 function update() {
