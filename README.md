@@ -29,12 +29,16 @@ doble clic, mejor en Chrome o Edge.
 - **Ruta completa**: SID y STAR de la base de datos de MSFS, con filtro por pista (pista en servicio elegida por el
   viento) y elección automática de la que acorta el camino a la zona. Admite puntos intermedios: fixes, VOR, NDB o
   coordenadas.
+- **Deriva**: desde la última posición conocida, el objeto (27 tipos de la tabla H-7), las horas perdido y la
+  corriente (por viento y marina) calcula dónde estará al llegar, el error probable y el cuadrado de búsqueda.
+- **Autonomía**: con tu autonomía y la reserva final, el tiempo que puedes estar en la zona o el punto de no retorno.
 - **Bases SAR reales en España** (Salvamento Marítimo y Ejército del Aire): ponen salida, destino, operador, tipo de
   vuelo y STS/SAR en el plan.
 - **Salidas**:
   - Guardar directamente en el GTN750.
   - Descargar el `.pln`.
-  - Plan ICAO para VATSIM: reglas I/V/Y/Z, casillas 10 y 18 automáticas; con botones de copiar, VATSIM y SimBrief.
+  - Plan ICAO para VATSIM: reglas I/V/Y/Z, casillas 10 y 18 automáticas, con el avión que vuelas u otro tipo (por ejemplo,
+    el AW139 real). Con botones de copiar, VATSIM y SimBrief.
   - Hoja de vuelo estilo SimBrief.
   - Planes de más de 100 waypoints divididos en varios vuelos.
 - **Misiones guardadas** con nombre: exportar e importar.
