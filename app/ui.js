@@ -87,7 +87,7 @@ function sarBaseInfo() {
     // «La más cercana» y se ha movido la zona: ofrecer cambiar (no se cambia sola para no pisar lo que hayas tocado)
     + ($('dep').value.trim().toUpperCase() !== b.icao ? ` <button class="sec small" data-set="dep=${b.icao};arr=${b.icao}">Salir y volver a ${b.icao}</button>` : '');
 }
-$('sarbaseInfo').addEventListener('click', e => { if (e.target.dataset?.set) applySet(e.target.dataset.set); });
+for (const id of ['sarbaseInfo', 'driftInfo']) $(id).addEventListener('click', e => { if (e.target.dataset?.set) applySet(e.target.dataset.set); });
 // Cambiar la salida a mano deja de usar una base fija (la nota ya no valdría)
 $('dep').addEventListener('change', () => { if (/^\d+$/.test($('sarbase').value) && $('dep').value.trim().toUpperCase() !== sarBase().icao) $('sarbase').value = ''; });
 $('apts').innerHTML = Object.entries(DB).map(([k, a]) => `<option value="${k}">${a[0]}</option>`).join('');
@@ -139,10 +139,12 @@ function fillPositions(keep) {
 
 // ---------- Estado de los campos ----------
 const FIELDS = ['type', 'lat', 'lon', 'hdg', 'unit', 'len', 'sp', 'n', 'dir', 'vs2', 'xh', 'tas', 'bank', 'alt', 'gota', 'wdir', 'wkt', 'walign', 'wreal', 'acft', 'il', 'auto', 'area', 'trail', 'cov', 'spman', 'sobj', 'pfd', 'craft', 'vis', 'sea', 'cf', 'fat', 'fov', 'ov', 'agl', 'px', 'dep', 'park', 'arr', 'fname', 'cruise', 'sid', 'star', 'viaOut', 'viaBack',
-  'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'sarbase', 'rwyDep', 'rwyArr'];
+  'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'sarbase', 'rwyDep', 'rwyArr',
+  'drift', 'lkpLat', 'lkpLon', 'dObj', 'dHours', 'dX', 'dWc', 'dCdir', 'dCkt'];
 const DIST = ['len', 'sp', 'spman'];
 const DEFAULTS = { type: 'PS', lat: 41.392957, lon: 1.944372, hdg: 45, unit: 'NM', dir: '1', vs2: false, gota: false, acft: 'custom', wdir: 0, wkt: 0, walign: false, wreal: false, il: '1', auto: true, area: '', trail: true, cov: 'sar', spman: '', sobj: 'Raft 6 person', pfd: false, craft: 'plane', vis: 10, sea: '0', cf: '1', fat: false, fov: 54, ov: 30, agl: '', px: 6000, cruise: '', sid: 'auto', star: 'auto', viaOut: '', viaBack: '',
                    cs: 'ECGCM', rules: 'I', ftype: 'X', eobt: '', altn: '', sts: '', opr: '', equip: '', rmk: '', sarbase: '', rwyDep: '', rwyArr: '',
+                   drift: false, lkpLat: '', lkpLon: '', dObj: 'piw', dHours: 2, dX: '0.1', dWc: true, dCdir: 0, dCkt: 0,
                    dep: 'LELL', park: '', arr: 'LELL', fname: 'fpl', ...STD_COMMON, ...STD.PS };
 const fmt = v => +(+v).toFixed(3);
 const unitM = () => UNIT_M[$('unit').value];
@@ -155,6 +157,8 @@ function markStd() {
   for (const f of ['len', 'sp', 'n', 'tas', 'bank', 'alt', 'fov', 'ov', 'px']) $(f).classList.toggle('std', isStd(f));
 }
 
+$('dObj').innerHTML = LEEWAY.map(([k, es]) => `<option value="${k}">${es}</option>`).join('');
+$('dX').innerHTML = POS_ERROR.map(([es, nm]) => `<option value="${nm}">${es} (${String(nm).replace('.', ',')} NM)</option>`).join('');
 $('sobj').innerHTML = SWEEP_OBJ.map(([g, items]) => `<optgroup label="${g}">` + items.map(([k, es]) => `<option value="${k}">${es}</option>`).join('') + '</optgroup>').join('');
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem('sarPlanner2') || '{}'); } catch {}
@@ -299,6 +303,33 @@ function coverage() {
   return null;
 }
 
+// Deriva: datum al llegar a la zona (lo perdido + el tránsito hasta allí), dibujo en el mapa y botones para usarlo
+function driftView(D, p) {
+  $('driftBox').style.display = $('drift').checked ? '' : 'none';
+  const lkp = [+$('lkpLat').value, +$('lkpLon').value];
+  if (!$('drift').checked) return;
+  if (!$('lkpLat').value || !$('lkpLon').value) { $('driftInfo').innerHTML = 'Pon la última posición conocida (o pulsa 📍 para usar el CSP).'; return; }
+  const kt = (PROFILES[$('acft').value] || PROFILES.custom).cruise || p.tas || 120;
+  const tr = D ? dist(D.pos, lkp) / NM / kt : 0, hours = Math.max(0, +$('dHours').value) + tr;
+  const d = driftDatum({ lkp, hours, wdir: p.wind.dir, wkt: p.wind.kt, obj: $('dObj').value, x: +$('dX').value, wc: $('dWc').checked,
+    sea: { dir: +$('dCdir').value, kt: +$('dCkt').value } });
+  const R = d.R * NM, sq = [45, 135, 225, 315].map(b => proj(d.datum, d.driftBrg + b, R * Math.SQRT2));
+  const opt = { color: '#4dd0e1', weight: 2, interactive: false };
+  L.circleMarker(lkp, { radius: 5, color: '#fff', weight: 2, fillColor: '#4dd0e1', fillOpacity: 1 }).bindTooltip('Última posición conocida').addTo(layer);
+  for (const q of [d.dL, d.dR]) L.polyline([lkp, q], { ...opt, dashArray: '4 4' }).addTo(layer);
+  L.circleMarker(d.datum, { radius: 6, color: '#111', weight: 1, fillColor: '#4dd0e1', fillOpacity: 1 }).bindTooltip(`Datum (dentro de ${(hours).toFixed(1).replace('.', ',')} h)`).addTo(layer);
+  L.circle(d.datum, { ...opt, radius: d.E * NM, dashArray: '2 6' }).addTo(layer);
+  L.polygon(sq, { ...opt, fill: false, dashArray: '8 6' }).addTo(layer);
+  const f = v => v.toFixed(1).replace('.', ',');
+  $('driftInfo').innerHTML = `Cuando llegues habrán pasado <b>${f(hours)} h</b> (${f(+$('dHours').value)} perdido + ${f(tr)} de tránsito). `
+    + `El objeto habrá derivado <b>${f(d.driftNm)} NM hacia el ${String(Math.round(d.driftBrg)).padStart(3, '0')}°</b> `
+    + `(leeway ${d.lwKt.toFixed(2).replace('.', ',')} kt ±${d.div}° del viento, corriente ${d.twcKt.toFixed(2).replace('.', ',')} kt). `
+    + `Error probable ${f(d.E)} NM (círculo) → buscar un cuadrado de <b>${f(2 * d.R)} × ${f(2 * d.R)} NM</b> (en el mapa).<br>`
+    + `<button class="sec small" data-set="lat=${d.datum[0].toFixed(5)};lon=${d.datum[1].toFixed(5)}">Poner el CSP en el datum</button> `
+    + `<button class="sec small" data-set="type=AREA;area=${JSON.stringify(sq.map(([a, b]) => [+a.toFixed(5), +b.toFixed(5)]))}">Buscar en ese cuadrado (área)</button>`
+    + (p.wind.kt ? '' : ' <span style="color:var(--warn)">Sin viento no hay leeway: pon el viento en «Avión y vuelo».</span>');
+}
+$('lkpCsp').onclick = () => { $('lkpLat').value = $('lat').value; $('lkpLon').value = $('lon').value; update(); };
 function update() {
   fillProcs(); // salida/destino pueden cambiar por código (base SAR, botones, mapa): listas de SID/STAR al día
   layer.clearLayers(); trackLayer.clearLayers(); coverLayer.clearLayers();
@@ -456,6 +487,7 @@ function update() {
       { pane: 'cover', stroke: false, fillColor: '#7fd3ff', fillOpacity: .18, interactive: false }).addTo(coverLayer);
   }
 
+  driftView(D, p);
   areaShape.setLatLngs(p.type === 'AREA' ? (p.area.length >= 3 ? p.area : []) : []);
   if (p.type === 'AREA') {
     if (allW.areaBrg !== undefined && $('auto').checked) $('hdg').value = Math.round(allW.areaBrg);
@@ -693,6 +725,7 @@ $('gsd').addEventListener('change', () => {
 function applySet(set) {
   for (const kv of set.split(';')) { const [f, v] = kv.split('='); $(f).value = v; }
   if (set.startsWith('dep=')) fillPositions('');
+  if (/(^|;)(type|area)=/.test(set)) drawAreaHandles(); // vértices arrastrables del área nueva
   update();
 }
 $('warn').addEventListener('click', e => { if (e.target.dataset?.set) applySet(e.target.dataset.set); });

@@ -181,6 +181,25 @@
       <label id="lenL"><span id="lenTxt"></span> <input id="len" type="number" min="0"></label>
       <label id="spL"><span id="spTxt">Separación S</span> <input id="sp" type="number" min="0"></label>
       <label id="nL"><span id="nTxt"></span> <input id="n" type="number" step="1" min="1"></label>
+      <label class="check">🌊 Calcular la deriva (persona u objeto en el agua) <input id="drift" type="checkbox"></label>
+      <div id="driftBox">
+        <div class="grid2">
+          <label>Última posición conocida: lat. <input id="lkpLat" type="number" step="0.0001"></label>
+          <label>long. <input id="lkpLon" type="number" step="0.0001"></label>
+        </div>
+        <button id="lkpCsp" class="sec small" type="button">📍 Usar el CSP actual como última posición</button>
+        <label>Qué flota <select id="dObj"></select></label>
+        <div class="grid2">
+          <label>Perdido hace (h) <input id="dHours" type="number" step="0.5" min="0"></label>
+          <label>Precisión de esa posición <select id="dX"></select></label>
+        </div>
+        <label class="check">Corriente generada por el viento (mar abierto, a más de 20 NM de la costa) <input id="dWc" type="checkbox"></label>
+        <div class="grid2">
+          <label>Corriente marina hacia (°) <input id="dCdir" type="number" step="10" min="0" max="360"></label>
+          <label>Corriente marina (kt) <input id="dCkt" type="number" step="0.1" min="0"></label>
+        </div>
+        <div id="driftInfo" class="note hint"></div>
+      </div>
     </div>
   </details>
 
