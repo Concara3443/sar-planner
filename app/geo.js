@@ -521,11 +521,14 @@ const pocSquare = (R, E) => erf(R / (E / 1.1774) / Math.SQRT2) ** 2;
 // la página (C = 0,5 / 1 / 1,5 / 2) la que da más POS = POC × POD, con un cuadrado de lado √(Z/C) (como mucho 6E: ya
 // contiene más del 99 %). POD = 1 − e^(−C), la curva de condiciones normales. Sin límite de tiempo: la primera búsqueda
 // clásica del IAMSAR, C = 1 y R = 1,1·E. E, W y R en NM; hours = horas en la zona.
-function bestEffort(E, W, Vkt, hours) {
+// Cmax: la cobertura más alta que se puede volar (S mínima que permiten los giros); si ni 0,5 cabe, se usa Cmax.
+function bestEffort(E, W, Vkt, hours, Cmax = Infinity) {
   const plan = (C, R) => { const POC = pocSquare(R, E), POD = 1 - Math.exp(-C); return { C, R, S: W / C, POC, POD, POS: POC * POD }; };
-  if (!(hours > 0 && isFinite(hours))) return plan(1, 1.1 * E);
+  const opts = [0.5, 1, 1.5, 2].filter(C => C <= Cmax + 1e-9);
+  if (!opts.length) opts.push(Cmax, Cmax / 2, Cmax / 4); // también menos cobertura en más área
+  if (!(hours > 0 && isFinite(hours))) return plan(Math.min(1, Math.max(Cmax, opts[0])), 1.1 * E);
   const Z = W * Vkt * hours;
-  return [0.5, 1, 1.5, 2].map(C => plan(C, Math.min(3 * E, Math.sqrt(Z / C) / 2))).reduce((a, b) => (b.POS > a.POS ? b : a));
+  return opts.map(C => plan(C, Math.min(3 * E, Math.sqrt(Z / C) / 2))).reduce((a, b) => (b.POS > a.POS ? b : a));
 }
 
 // ---------- Ruta: puntos intermedios, SID/STAR, rumbo óptimo y plan de vuelo ICAO ----------

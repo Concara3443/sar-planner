@@ -221,6 +221,10 @@ ok("deriva: leeway, corriente por viento y datum");
   const poco = g.bestEffort(5, 0.5, 120, 0.5), mucho = g.bestEffort(1, 2, 150, 4);
   assert(poco.C === 0.5 && mucho.C === 2 && mucho.R === 3, JSON.stringify([poco, mucho])); // poco tiempo: barrer rápido; mucho: a fondo
   assert(poco.POS < mucho.POS && poco.POS > 0 && mucho.POS < 1);
+  // Avión rápido: no puede volar separaciones pequeñas → cobertura limitada a la que cabe
+  assert.equal(g.bestEffort(1, 2, 150, 4, 1.2).C, 1);
+  assert.equal(g.bestEffort(1, 0.1, 150, 4, 0.3).C, 0.3);
+  assert.equal(g.bestEffort(1, 0.1, 150, Infinity, 0.3).C, 0.3);
 }
 ok("mejor reparto del esfuerzo (POC × POD)");
 console.log("TODO OK");
