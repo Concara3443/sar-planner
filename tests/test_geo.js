@@ -41,6 +41,13 @@ for (const type of ["PS", "CS", "TSN", "TSR", "SS", "SSI", "VS", "BP", "OR", "SP
 w = g.buildPattern({ ...base, type: "VS", vs2: true, gota: true, len: 5 * NM, dir: -1, hdg: 220 });
 const ext = w.filter(x => x.ext).map(x => x.name);
 assert(!ext.includes("CSP2X") && ext.includes("CSP4X") && ext.includes("V1X"));
+// Sobrepaso con giros fly-by: en cada punto de la gota que no es vuelta a la pasada de al lado, el GTN empieza a girar
+// justo en la esquina (D en X = distancia de la esquina a X), así la esquina se sobrevuela sin pedirle al GTN un sobrevuelo
+{
+  const r = g.turnRadius(90, 17.5), q = g.buildPattern({ ...base, type: "VS", gota: true, len: 3 * NM, hdg: 30, radius: r }), t = g.gtnTurns(q, r);
+  const xs = q.map((x, i) => [x, i]).filter(([x]) => x.ext);
+  assert(xs.length && xs.every(([x, i]) => !t[i].over && Math.abs(t[i].D - g.dist(q[i - 1].pos, x.pos)) < 5), "VS: el giro empieza en la esquina");
+}
 // Crosshatch: la 2ª pasada empieza en la esquina más cercana (sin vuelta de 180°)
 w = g.buildPattern({ ...base, type: "PS", xh: true, hdg: 90, len: 6 * NM, sp: 1.5 * NM, n: 4, radius: R });
 assert(turnsOf(w).every(a => a < 170), "crosshatch sin giros de 180°");

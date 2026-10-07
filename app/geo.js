@@ -439,7 +439,7 @@ function buildOne(p) {
   }
   out[0].turn = false;
   out[out.length - 1].turn = false;
-  if (!p.gota || !p.radius) return out;
+  if (!p.gota || !p.radius) return overflyFlyBy(out, p.radius);
   const areaBrg = out.areaBrg;
   const res = [];
   out.forEach((w, i) => {
@@ -455,9 +455,28 @@ function buildOne(p) {
   });
   res.areaBrg = areaBrg;
   res.areaCells = out.areaCells;
-  return res;
+  return overflyFlyBy(res, p.radius);
 }
 
+// Puntos de sobrepaso (ext sin fb: esquinas del sector, del cuadrado, de la cuadrícula cruzada): el GTN no sobrevuela
+// waypoints de usuario, los anticipa. Para que el avión pase por la esquina W, el punto X va justo a la distancia a la
+// que el GTN empieza a girar hacia el siguiente: d = r·tan(giro en X / 2), que depende de dónde quede X (se itera).
+// Así el giro empieza sobre W y todo son giros fly-by. Si el giro en X pasa de 170° (casi media vuelta), se deja a r.
+function overflyFlyBy(w, r) {
+  if (!r) return w;
+  w.forEach((x, i) => {
+    if (!x.ext || x.fb || i < 2 || !w[i + 1]) return;
+    const W = w[i - 1].pos, b1 = brg(w[i - 2].pos, W), B = w[i + 1].pos;
+    let d = r;
+    for (let k = 0; k < 8; k++) {
+      const X = proj(W, b1, d), ad = Math.abs(((brg(X, B) - b1 + 540) % 360) - 180);
+      if (ad > 170) { d = r; break; }
+      d = r * Math.tan(ad / 2 * RAD);
+    }
+    x.pos = proj(W, b1, d); x.fb = true;
+  });
+  return w;
+}
 // Gota de la pasada A→E a la siguiente N→M (en sentido contrario, a S < 2r) como la vuela el GTN750: solo giros fly-by
 // de radio r encadenados, sin rectas entre ellos. En E abre α hacia fuera y vuelve con 180°+α, repartido en dos
 // puntos X e Y, hasta caer sobre la pasada siguiente: 2r·cos α = S. Si Y se pasa de N, adelanta el giro de E (punto W).
