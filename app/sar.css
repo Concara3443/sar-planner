@@ -74,6 +74,7 @@ footer .grid2 button { margin:0; }
 #stats { font-size:12px; margin-top:4px; }
 #stats div { display:flex; justify-content:space-between; gap:6px; padding:0; }
 #idealBox:has(#idealInfo:empty) { display:none; }
+#idealInfo { max-height:110px; overflow-y:auto; } /* que el resumen de ✨ no apriete el formulario */
 footer .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px; } footer .grid3 button { margin:0; padding:7px 4px; }
 #fresh { white-space:nowrap; margin-left:auto; } #sim { white-space:nowrap; }
 #warn { color:var(--warn); font-size:12px; margin-top:6px; }

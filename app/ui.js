@@ -1169,6 +1169,7 @@ for (const el of [$('type'), $('area'), ...document.querySelectorAll('input[name
 // ✨ Optimizar, el único botón de «lo mejor»: con deriva, el patrón que más probabilidad da (bestSearch); luego velocidad,
 // altitud y rumbo (computeIdeal), otra vez el patrón con esos valores, y por último las correcciones de los avisos
 function optimize() {
+  $('idealBox').open = true; // que se vea lo que ha cambiado
   const drift = $('cov').value === 'sar' && $('drift').checked;
   if (drift) bestSearch();
   computeIdeal();
