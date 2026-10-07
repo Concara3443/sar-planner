@@ -113,7 +113,6 @@ function fplTypeBtns() {
 $('fplTypeBtns').addEventListener('click', e => { if (e.target.dataset?.set !== undefined) applySet(e.target.dataset.set); });
 for (const id of ['sarbaseInfo', 'driftInfo']) $(id).addEventListener('click', e => {
   if (e.target.dataset?.set) applySet(e.target.dataset.set);
-  if (e.target.dataset?.best) bestSearch();
 });
 // Cambiar la salida a mano deja de usar una base fija (la nota ya no valdría)
 $('dep').addEventListener('change', () => { if (/^\d+$/.test($('sarbase').value) && $('dep').value.trim().toUpperCase() !== sarBase().icao) { $('sarbase').value = ''; clearSarFpl(); } });
@@ -167,11 +166,11 @@ function fillPositions(keep) {
 // ---------- Estado de los campos ----------
 const FIELDS = ['type', 'lat', 'lon', 'hdg', 'unit', 'len', 'sp', 'n', 'dir', 'vs2', 'xh', 'tas', 'bank', 'alt', 'gota', 'wdir', 'wkt', 'walign', 'wreal', 'acft', 'il', 'auto', 'area', 'trail', 'cov', 'spman', 'sobj', 'pfd', 'craft', 'vis', 'sea', 'cf', 'fat', 'fov', 'ov', 'agl', 'px', 'dep', 'park', 'arr', 'fname', 'cruise', 'sid', 'star', 'viaOut', 'viaBack',
   'cs', 'rules', 'ftype', 'eobt', 'altn', 'sts', 'opr', 'equip', 'rmk', 'fplType', 'fplWake', 'fplMission', 'sarbase', 'rwyDep', 'rwyArr',
-  'endur', 'resv', 'drift', 'lkpLat', 'lkpLon', 'dObj', 'dHours', 'dX', 'dWc', 'dCdir', 'dCkt'];
+  'endur', 'resv', 'drift', 'dFollow', 'lkpLat', 'lkpLon', 'dObj', 'dHours', 'dX', 'dWc', 'dCdir', 'dCkt'];
 const DIST = ['len', 'sp', 'spman'];
 const DEFAULTS = { type: 'PS', lat: 41.392957, lon: 1.944372, hdg: 45, unit: 'NM', dir: '1', vs2: false, gota: false, acft: 'custom', wdir: 0, wkt: 0, walign: false, wreal: false, il: '1', auto: true, area: '', trail: true, cov: 'sar', spman: '', sobj: 'Raft 6 person', pfd: false, craft: 'plane', vis: 10, sea: '0', cf: '1', fat: false, fov: 54, ov: 30, agl: '', px: 6000, cruise: '', sid: 'auto', star: 'auto', viaOut: '', viaBack: '',
                    cs: 'ECGCM', rules: 'I', ftype: 'X', eobt: '', altn: '', sts: '', opr: '', equip: '', rmk: '', fplType: '', fplWake: '', fplMission: '', sarbase: '', rwyDep: '', rwyArr: '',
-                   endur: '', resv: 30, drift: false, lkpLat: '', lkpLon: '', dObj: 'piw', dHours: 2, dX: '0.1', dWc: true, dCdir: 0, dCkt: 0,
+                   endur: '', resv: 30, drift: false, dFollow: true, lkpLat: '', lkpLon: '', dObj: 'piw', dHours: 2, dX: '0.1', dWc: true, dCdir: 0, dCkt: 0,
                    dep: 'LELL', park: '', arr: 'LELL', fname: 'fpl', ...STD_COMMON, ...STD.PS };
 const fmt = v => +(+v).toFixed(3);
 const unitM = () => UNIT_M[$('unit').value];
@@ -182,6 +181,7 @@ const isStd = f => stdShown(f) !== undefined && Math.abs(+$(f).value - stdShown(
 
 function markStd() {
   for (const f of ['len', 'sp', 'n', 'tas', 'bank', 'alt', 'fov', 'ov', 'px']) $(f).classList.toggle('std', isStd(f));
+  $('mp').classList.toggle('std', isStd('px'));
 }
 
 $('dObj').innerHTML = LEEWAY.map(([k, es]) => `<option value="${k}">${es}</option>`).join('');
@@ -200,6 +200,7 @@ fillProcs(saved.sid ?? DEFAULTS.sid, saved.star ?? DEFAULTS.star, saved.rwyDep ?
 
 // ---------- Mapa ----------
 const map = L.map('map').setView([+$('lat').value, +$('lon').value], 10);
+map.attributionControl.setPrefix('© <a href="https://guillermocort.es" target="_blank">Guillermo Cortés</a> · <a href="https://github.com/Concara3443/sar-planner" target="_blank">Código fuente</a> · Leaflet');
 const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   { maxZoom: 19, attribution: 'Esri World Imagery' }).addTo(map);
 const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
@@ -266,6 +267,11 @@ const arrowIcon = (deg, c) => L.divIcon({ className: '', iconSize: [18, 18], ico
   html: `<svg width="18" height="18" viewBox="-9 -9 18 18" style="transform:rotate(${deg}deg);filter:drop-shadow(0 0 2px #000)"><path d="M0,-7 L6,6 L0,3 L-6,6 Z" fill="${c}"/></svg>` });
 const cspM = L.marker([0, 0], { draggable: true, icon: icon('#e53935'), zIndexOffset: 1000 }).addTo(map).bindTooltip('CSP');
 const hdgM = L.marker([0, 0], { draggable: true, icon: icon('#1e88e5'), zIndexOffset: 1000 }).addTo(map).bindTooltip('Rumbo / longitud');
+// Última posición conocida de la deriva: se arrastra, o «📍 Marcar en el mapa» y clic
+const lkpM = L.marker([0, 0], { draggable: true, icon: icon('#4dd0e1'), zIndexOffset: 900 }).bindTooltip('Última posición conocida');
+let lkpPick = false, followTo = null, following = 0; // followTo: datum al que mover el CSP al acabar update()
+const setLkp = ll => { $('lkpLat').value = ll.lat.toFixed(4); $('lkpLon').value = ll.lng.toFixed(4); update(); };
+lkpM.on('drag', e => setLkp(e.target.getLatLng()));
 
 const areaPts = () => { try { return JSON.parse($('area').value || '[]'); } catch { return []; } };
 // Radio con el que el GTN750 dibuja los giros: su banco (o el del avión si es menor) a la velocidad sobre el suelo.
@@ -349,12 +355,16 @@ function coverage() {
 
 // Deriva: datum al llegar a la zona (lo perdido + el tránsito hasta allí), dibujo en el mapa y botones para usarlo
 let lastDrift = null; // último datum calculado
+// Datum en el que centrar el patrón («Patrón centrado en el datum»); null si no toca. lastDrift es el del último update()
+const followCenter = p => (lastDrift && $('drift').checked && $('cov').value === 'sar' && $('dFollow').checked && p.type !== 'AREA' ? lastDrift.d.datum : null);
 function driftView(D, p) {
   lastDrift = null;
   $('driftBox').style.display = $('drift').checked ? '' : 'none';
   const lkp = [+$('lkpLat').value, +$('lkpLon').value];
-  if (!$('drift').checked) return;
-  if (!$('lkpLat').value || !$('lkpLon').value) { $('driftInfo').innerHTML = 'Pon la última posición conocida (o pulsa 📍 para usar el CSP).'; return; }
+  const on = $('drift').checked && $('cov').value === 'sar' && $('lkpLat').value && $('lkpLon').value;
+  on ? lkpM.setLatLng(lkp).addTo(map) : map.removeLayer(lkpM);
+  if (!$('drift').checked || $('cov').value !== 'sar') return;
+  if (!on) { $('driftInfo').innerHTML = 'Pulsa <b>📍 Marcar en el mapa</b> y haz clic donde se perdió.'; return; }
   const kt = (PROFILES[$('acft').value] || PROFILES.custom).cruise || p.tas || 120;
   const tr = D ? dist(D.pos, lkp) / NM / kt : 0, hours = Math.max(0, +$('dHours').value) + tr;
   const d = driftDatum({ lkp, hours, wdir: p.wind.dir, wkt: p.wind.kt, obj: $('dObj').value, x: +$('dX').value, wc: $('dWc').checked,
@@ -372,9 +382,7 @@ function driftView(D, p) {
     + `El objeto habrá derivado <b>${f(d.driftNm)} NM hacia el ${String(Math.round(d.driftBrg)).padStart(3, '0')}°</b> `
     + `(leeway ${d.lwKt.toFixed(2).replace('.', ',')} kt ±${d.div}° del viento, corriente ${d.twcKt.toFixed(2).replace('.', ',')} kt). `
     + `Error probable ${f(d.E)} NM (círculo) → buscar un cuadrado de <b>${f(2 * d.R)} × ${f(2 * d.R)} NM</b> (en el mapa).<br>`
-    + `<button class="sec small" data-set="lat=${d.datum[0].toFixed(5)};lon=${d.datum[1].toFixed(5)}">Poner el CSP en el datum</button> `
     + `<button class="sec small" data-set="type=AREA;area=${JSON.stringify(sq.map(([a, b]) => [+a.toFixed(5), +b.toFixed(5)]))}">Buscar en ese cuadrado (área)</button> `
-    + `<button class="small" data-best="1">✨ Mejor patrón con estos datos</button>`
     + (p.wind.kt ? '' : ' <span style="color:var(--warn)">Sin viento no hay leeway: pon el viento en «Avión y vuelo».</span>');
 }
 // ✨ Mejor patrón: con el datum, lo que flota, tu avión y el tiempo que puedes estar en la zona, el área, la cobertura y
@@ -428,7 +436,7 @@ function bestSearch() {
     + ` (${isFinite(hours) ? `el patrón dura ${Math.round(lastTimes.patAll / 60)} min y el vuelo completo ${Math.round((lastTimes.patAll + lastTimes.tr) / 60)} de los ${Math.round(avail * 60)} que tienes` : 'primera búsqueda; pon tu autonomía para ajustarlo a tu tiempo'}).`
     + `<br>Probabilidad de encontrarlo: está dentro ${pc(b.POC)} × lo ves si está ${pc(b.POD)} = <b>${pc(b.POS)}</b>.`
     + (b.C < 0.5 ? `<br><span style="color:var(--warn)">Con tu velocidad no se pueden volar pasadas más juntas de ${f(Smin)} NM: para este objeto, mejor un helicóptero o volar más despacio.</span>` : '')
-    + ($('gota').checked ? '<br>Algunos giros no caben ni entrelazando: se ha activado la gota (sobrevuela y da la vuelta).' : '');
+    + ($('gota').checked ? '<br>Algunos giros no caben ni entrelazando: se ha activado la gota (vuelta en bombilla fuera del área).' : '');
 }
 // ---- 🎲 Simular un caso con el avión elegido ----
 // Búsqueda: base SAR real adecuada (helicóptero: bases de helicópteros; avión: aeropuertos de costa), posición perdida en
@@ -491,6 +499,7 @@ async function simulate() {
     let maxD = Math.max(50, Math.min(heli ? 120 : 350, cruise * availH * (far ? 0.35 : 0.22)));
     for (let k = 0; k < 3; k++) {
       const lkp = seaPoint(apt(b.icao).pos, 25, maxD);
+      $('driftSub').open = true;
       $('lkpLat').value = $('lat').value = lkp[0].toFixed(4); $('lkpLon').value = $('lon').value = lkp[1].toFixed(4);
       update(); computeIdeal(); bestSearch();
       if (far || !lastDrift || lastTimes.tr <= lastTimes.patAll) break;
@@ -522,18 +531,22 @@ async function simulate() {
   if (lay.length) map.fitBounds(L.featureGroup(lay).getBounds(), { padding: [30, 30] });
 }
 $('sim').onclick = simulate;
-$('lkpCsp').onclick = () => { $('lkpLat').value = $('lat').value; $('lkpLon').value = $('lon').value; update(); };
+$('lkpCsp').onclick = () => { lkpPick = true; map.getContainer().style.cursor = 'crosshair'; $('driftInfo').innerHTML = 'Haz clic en el mapa donde se perdió.'; };
 function update() {
   fillProcs(); // salida/destino pueden cambiar por código (base SAR, botones, mapa): listas de SID/STAR al día
   layer.clearLayers(); trackLayer.clearLayers(); coverLayer.clearLayers();
   windFromCache();
   if (!['man', 'sar', 'cam'].includes($('cov').value)) $('cov').value = 'man';
   $({ man: 'covMan', sar: 'covSar', cam: 'covCam' }[$('cov').value]).checked = true;
+  const driftObj = $('drift').checked && $('cov').value === 'sar';
+  if (driftObj) $('sobj').value = LEEWAY_SWEEP[$('dObj').value] || 'Person in Water';
+  $('sobjL').style.display = driftObj ? 'none' : '';
   const ph = coverage();
   if (ph && ph.s > 0) $('sp').value = fmt(ph.s / unitM());
   $('sp').classList.toggle('auto', !!ph);
   $('sp').title = ph ? 'Calculada por ' + ($('cov').value === 'sar' ? 'SAR visual (W ÷ C)' : 'la cámara') + '. Si escribes un valor pasas a Manual.' : '';
   $('camBox').style.display = $('cov').value === 'cam' ? '' : 'none';
+  if (document.activeElement !== $('mp')) $('mp').value = Math.round((+$('px').value || 6000) ** 2 / 1.5 / 1e6);
   $('sarBox').style.display = $('cov').value === 'sar' ? '' : 'none';
   $('pfdL').style.display = $('sobj').value === 'Person in Water' ? '' : 'none';
   const p = params(), ui = UI[p.type];
@@ -579,7 +592,7 @@ function update() {
   const from = pre.length ? pre[pre.length - 1].pos : D?.pos, to = post.length ? post[0].pos : A?.pos;
   p.from = from;
   // Rumbo automático: el que hace más corto el vuelo completo (en el área lo elige su propio cálculo)
-  if (AUTO_HDG.includes(p.type) && $('auto').checked) $('hdg').value = p.hdg = bestHeading(p, from, to);
+  if (AUTO_HDG.includes(p.type) && $('auto').checked) $('hdg').value = p.hdg = bestHeading(p, from, to, followCenter(p));
   const allW = buildPattern(p);
   // Qué ha elegido «Auto»
   $('il').querySelector('[value=auto]').textContent = allW.il ? `Auto (${allW.il === '1' ? 'sin entrelazar' : 'salto ' + allW.il})` : 'Auto';
@@ -653,7 +666,7 @@ function update() {
     if (fit < 1 - 1e-6) arc.push(...overshootArc(proj(W, b1 + 180, D), b1, sgn * ad, W, brg(W, B), p.radius));
     else for (let j = 0; j <= m; j++) arc.push(proj(C, b1 - 90 * sgn + sgn * ad * j / m, r));
     path.push(...arc);
-    if (ad > WIDE) { // giro anticipado tan cerrado que el avión pasa lejos del waypoint
+    if (ad > WIDE && !R[i].ext) { // giro anticipado tan cerrado que el avión pasa lejos del waypoint
       const cut = r / Math.cos(ad / 2 * RAD) - r;
       oranges.push(L.polyline(arc, { pane: 'trail', color: '#ff9f1c', weight: 5 })
         .bindTooltip(`Giro de ${Math.round(ad)}°: el GTN750 empieza a girar ${showD(D)} antes y pasa a ${showD(cut)} del waypoint, sin sobrevolarlo.`));
@@ -819,6 +832,12 @@ function update() {
   const st = {};
   for (const f of FIELDS) st[f] = $(f).type === 'checkbox' ? $(f).checked : $(f).value;
   try { localStorage.setItem('sarPlanner2', JSON.stringify(st)); } catch {}
+  // Patrón centrado en el datum: al final, con el rumbo automático ya elegido
+  const pf = params(), ctr = followCenter(pf);
+  if (ctr) { const to = centeredCsp(pf, ctr); if (dist(pf.csp, to) > 5) followTo = to; }
+  // Hasta 4 vueltas: con rumbo automático el rumbo depende del CSP y el centro se mueve un poco cada vez (sin tope, bucle)
+  if (followTo && following < 4) { const q = followTo; followTo = null; following++; $('lat').value = q[0].toFixed(6); $('lon').value = q[1].toFixed(6); update(); following--; }
+  followTo = null;
 }
 
 // ---------- Viento real: METAR de la salida (VATSIM, real) + viento en ruta a tu altitud (Open-Meteo, por niveles de presión) ----------
@@ -906,12 +925,13 @@ $('type').addEventListener('change', () => { setDrawing(false); drawAreaHandles(
 
 function setCsp(ll) { $('lat').value = ll.lat.toFixed(6); $('lon').value = ll.lng.toFixed(6); update(); }
 map.on('click', e => {
-  if ($('type').value !== 'AREA') return setCsp(e.latlng);
+  if (lkpPick) { lkpPick = false; map.getContainer().style.cursor = ''; return setLkp(e.latlng); }
+  if ($('type').value !== 'AREA') { $('dFollow').checked = false; return setCsp(e.latlng); } // mover el CSP a mano deja de seguir el datum
   if (!areaDrawing) return;
   setArea([...areaPts(), [e.latlng.lat, e.latlng.lng]]); drawAreaHandles(); update();
 });
 map.on('zoomend', update);
-cspM.on('drag', e => setCsp(e.target.getLatLng()));
+cspM.on('drag', e => { $('dFollow').checked = false; setCsp(e.target.getLatLng()); });
 hdgM.on('drag', e => {
   $('auto').checked = false; // lo has elegido tú
   const ll = e.target.getLatLng(), c = [+$('lat').value, +$('lon').value], pt = [ll.lat, ll.lng], h = handleOf(params());
@@ -942,8 +962,12 @@ $('gsd').addEventListener('change', () => {
   if (!$('gsd').value) return;
   const swath = +$('gsd').value / 100 * (+$('px').value || 6000);
   const ft = Math.round(swath / (2 * Math.tan(+$('fov').value / 2 * RAD)) / 0.3048 / 50) * 50;
-  $($('agl').value ? 'agl' : 'alt').value = ft; $('gsd').value = ''; update();
+  $($('agl').value ? 'agl' : 'alt').value = ft; update();
 });
+for (const f of ['alt', 'agl']) $(f).addEventListener('input', () => { $('gsd').value = ''; });
+// Megapíxeles (foto 3:2) ↔ ancho de la foto en px, que es lo que usan los cálculos
+$('mp').addEventListener('input', () => { if (+$('mp').value > 0) $('px').value = Math.round(Math.sqrt(+$('mp').value * 1e6 * 1.5)); });
+for (const f of ['mp', 'fov']) $(f).addEventListener('input', () => $('gsd').value ? $('gsd').dispatchEvent(new Event('change')) : update());
 function applySet(set) {
   for (const kv of set.split(';')) { const [f, v] = kv.split('='); $(f).value = v; }
   if (set.startsWith('dep=')) fillPositions('');
@@ -963,6 +987,7 @@ for (const r of document.querySelectorAll('input[name=covR]')) r.addEventListene
 function resetRecommended() {
   for (const f of ['len', 'sp', 'n', 'tas', 'bank', 'alt', 'fov', 'ov', 'px']) if (stdShown(f) !== undefined) $(f).value = stdShown(f);
   for (const f of ['gota', 'xh', 'vs2']) $(f).checked = false;
+  $('gsd').value = '';
   $('il').value = '1'; $('cov').value = 'man'; $('spman').value = ''; $('trail').checked = true; syncTrail();
   update();
   autoFix(['Agrandar', 'il=', 'tas=']);
@@ -1052,14 +1077,23 @@ function computeIdeal() {
   for (const f of watch) $(f).classList.toggle('changed', $(f).value !== before[f]);
   if (AUTO_HDG.includes($('type').value) || $('type').value === 'AREA') why.push(`rumbo ${$('hdg').value}°: el que hace más corto el vuelo`);
   $('idealInfo').innerHTML = '✨ ' + why.join('<br>✨ ') + `<br>Patrón: <b>${Math.round(lastTimes.pat / 60)} min</b>.`;
-  $('ideal').closest('details').open = true;
   $('msg').innerHTML = '';
 }
 // Al tocar un campo a mano deja de estar resaltado; si se tocan otros parámetros el resumen deja de valer
 for (const f of ['alt', 'agl', 'tas', 'bank', 'il', 'craft']) $(f).addEventListener('input', () => $(f).classList.remove('changed'));
 // Otro patrón u otra área: el resumen de ✨ ya no vale
-for (const id of ['type', 'area', 'cov']) $(id).addEventListener('change', () => { $('idealInfo').innerHTML = ''; });
-$('ideal').onclick = computeIdeal;
+for (const el of [$('type'), $('area'), ...document.querySelectorAll('input[name=covR]')]) el.addEventListener('change', () => { $('idealInfo').innerHTML = ''; });
+// ✨ Optimizar, el único botón de «lo mejor»: con deriva, el patrón que más probabilidad da (bestSearch); luego velocidad,
+// altitud y rumbo (computeIdeal), otra vez el patrón con esos valores, y por último las correcciones de los avisos
+function optimize() {
+  const drift = $('cov').value === 'sar' && $('drift').checked;
+  if (drift) bestSearch();
+  computeIdeal();
+  if (drift) bestSearch();
+  autoFix(['il=', 'tas=', 'Agrandar']);
+  if (hasTurnErrors()) $('msg').innerHTML = '<span style="color:var(--warn)">Aún hay giros que no caben: mira el aviso de arriba.</span>';
+}
+$('opt').onclick = optimize;
 // Al elegir avión: su velocidad de búsqueda/crucero como TAS de partida
 $('acft').addEventListener('change', () => {
   const prof = PROFILES[$('acft').value];
@@ -1491,6 +1525,7 @@ document.querySelectorAll('details.card').forEach((d, i) => {
 drawAreaHandles();
 syncTrail();
 update();
+if ($('drift').checked) $('driftSub').open = true;
 if (hasTurnErrors()) { // lo guardado no era volable: primero arreglarlo sin cambiar el modo (entrelazar, altura, TAS); si no, lo recomendado
   autoFix(['il=', 'alt=', 'agl=', 'tas=']);
   if (hasTurnErrors()) {

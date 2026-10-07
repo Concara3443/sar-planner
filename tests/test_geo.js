@@ -5,7 +5,7 @@ const geo = fs.readFileSync(path.join(dir, "data/iamsar.js"), "utf8") + "\n" + f
 for (const f of fs.readdirSync(path.join(dir, "app")).filter(f => f.endsWith(".js"))) // sintaxis de todos los .js
   new Function(fs.readFileSync(path.join(dir, "app", f), "utf8"));
 const g = new Function(geo + `;return {buildPattern, buildPln, departurePosition, sweepWidth, bestAreaRoute, polyAreaM2, splitPlan,
-  icaoCoord, resolveVia, procPoints, bestHeading, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc, driftDatum, leeway, windCurrent, bestEffort, coastDist}`)();
+  icaoCoord, resolveVia, procPoints, bestHeading, centeredCsp, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc, driftDatum, leeway, windCurrent, bestEffort, coastDist}`)();
 const { NM } = g, c = [41.4, 2.0], R = g.turnRadius(120, 25);
 const at = (n, e) => g.proj(g.proj(c, 0, n * NM), 90, e * NM);
 const legStr = w => w.slice(1).map((x, i) => (g.dist(w[i].pos, x.pos) / NM).toFixed(1) + "@" + Math.round(g.brg(w[i].pos, x.pos)));
@@ -44,11 +44,25 @@ assert(!ext.includes("CSP2X") && ext.includes("CSP4X") && ext.includes("V1X"));
 // Crosshatch: la 2ª pasada empieza en la esquina más cercana (sin vuelta de 180°)
 w = g.buildPattern({ ...base, type: "PS", xh: true, hdg: 90, len: 6 * NM, sp: 1.5 * NM, n: 4, radius: R });
 assert(turnsOf(w).every(a => a < 170), "crosshatch sin giros de 180°");
-// Gota: un solo punto de sobrepaso por vuelta si las pasadas están más juntas que el diámetro de giro; si no, ninguno
-for (const sp of [0.4, 1, 1.8, 3]) {
-  w = g.buildPattern({ ...base, type: "PS", gota: true, hdg: 0, len: 6 * NM, sp: sp * NM, n: 4, radius: 1 * NM });
-  assert.equal(w.filter(x => x.ext).length, sp < 2 ? 3 : 0, `gota S=${sp}: ${w.map(x => x.name)}`);
+// Gota: si las pasadas están más juntas que el diámetro de giro, giros fly-by encadenados de radio r exacto que caen
+// sobre la pasada siguiente (nada de sobrevuelo + giro de 90°); si no, ningún punto de más
+for (const sp of [0.4, 1, 1.8, 3]) for (const dir of [1, -1]) {
+  w = g.buildPattern({ ...base, type: "PS", gota: true, hdg: 0, dir, len: 6 * NM, sp: sp * NM, n: 4, radius: 1 * NM });
+  const ex = w.filter(x => x.ext);
+  assert.equal(ex.length, sp < 2 ? 6 : 0, `gota S=${sp}: ${w.map(x => x.name)}`);
+  const tt = g.gtnTurns(w, 1 * NM);
+  assert(tt.every(x => !x.over && x.fit > 1 - 1e-6), `gota S=${sp}: giros fly-by de radio r`);
+  // los arcos se tocan: lo anticipado en cada punto de la gota suma el tramo entero
+  for (let i = 1; i < w.length - 1; i++) if (w[i].ext && w[i + 1].ext)
+    assert(Math.abs(tt[i].D + tt[i + 1].D - g.dist(w[i].pos, w[i + 1].pos)) < 0.005 * g.dist(w[i].pos, w[i + 1].pos), `gota S=${sp}: arcos encadenados`);
 }
+// Patrón centrado en el datum: PS/CS se desplazan para que el centro caiga en él; SS lleva el CSP en él
+for (const type of ["PS", "CS", "TSR", "ZZ"]) {
+  const q = { ...base, type, len: 4 * NM, n: 5 }, cs = g.centeredCsp(q, c), pw = g.buildPattern({ ...q, csp: cs });
+  const la = pw.map(x => x.pos[0]), lo = pw.map(x => x.pos[1]);
+  assert(g.dist([(Math.min(...la) + Math.max(...la)) / 2, (Math.min(...lo) + Math.max(...lo)) / 2], c) < 5, `${type} centrado en el datum`);
+}
+assert.deepEqual(g.centeredCsp({ ...base, type: "SS" }, c), c);
 ok("patrones clásicos, gota y crosshatch");
 
 // ---------- Costa (data/costa.js) ----------

@@ -49,12 +49,13 @@ doble clic, mejor en Chrome o Edge.
 
 ## Uso
 
-1. **Avión y vuelo**: avión, salida y destino (o una base SAR real), TAS y altitud de búsqueda, crucero y viento.
-2. **Qué vas a hacer**: buscar (SAR visual), fotografía o libre.
-3. **Dónde**: dibuja un área o elige un patrón; arrastra el CSP (rojo) y el rumbo (azul) en el mapa.
+1. **Misión**: buscar (SAR visual), fotografía o libre. Al buscar, en **🌊 Deriva** marcas en el mapa la última posición
+   conocida y el patrón se centra solo en el datum (dónde estará cuando llegues).
+2. **Avión y salida**: avión, salida y destino (o una base SAR real), TAS y altitud; autonomía y viento en sus desplegables.
+3. **Zona o patrón**: dibuja un área o elige un patrón; arrastra el CSP (rojo) y el rumbo (azul) en el mapa.
 4. **Ruta** (opcional): pistas, SID, STAR y puntos intermedios.
-5. **✨**: ajusta velocidad, altitud y rumbo a tu avión. Después guarda en el GTN750, descarga el `.pln` o copia el
-   plan ICAO.
+5. **✨ Optimizar**: patrón por la deriva, velocidad, altitud y rumbo, y corrige los giros que no caben. Después guarda
+   en el GTN750, descarga el `.pln` o copia el plan ICAO.
 
 ## Estructura
 

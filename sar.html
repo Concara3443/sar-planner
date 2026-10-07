@@ -9,7 +9,7 @@
 <!-- Generado por scripts\exportar_aeropuertos.py desde Little Navmap (MSFS 2024) -->
 <script>
 // Versión: súbela al cambiar cualquier .js o .css y el navegador los vuelve a pedir (si no, puede usar una copia vieja)
-const V = 5, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
+const V = 10, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
 document.write(`<link rel="stylesheet" href="app/sar.css?v=${V}">`);
 load('data/aeropuertos.js', 'window.AIRPORTS_DB = {}');
 load('data/navdata.js', 'window.NAV_DB = { nav: {}, proc: {} }');
@@ -23,11 +23,101 @@ load('data/costa.js', 'window.COAST = []');
 <div id="scroll">
   <header>
     <h1>SAR Planner <span>→ GTN750</span></h1>
-    <button id="reset" class="sec small" title="Vuelve a los valores estándar y corrige los giros que no caben. Mantiene zona, aeropuertos y unidades.">↺ Recomendado</button>
+    <button id="sim" class="sec small" title="Inventa un caso que encaje con el avión elegido: búsqueda en el mar (con deriva) o encargo de fotografía">🎲 Simular</button>
+    <a id="gh" href="https://github.com/Concara3443/sar-planner" target="_blank" rel="noopener" title="Código fuente en GitHub"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span class="sr">Código fuente en GitHub</span></a>
   </header>
+  <div id="simInfo" class="note"></div>
+
+  <details class="card" open id="covCard">
+    <summary><b class="step">1</b> Misión</summary>
+    <div class="body">
+      <div class="seg">
+        <input type="radio" name="covR" id="covSar" value="sar"><label for="covSar">🔎 Buscar</label>
+        <input type="radio" name="covR" id="covCam" value="cam"><label for="covCam">📷 Fotografía</label>
+        <input type="radio" name="covR" id="covMan" value="man"><label for="covMan">✏ Libre</label>
+      </div>
+      <input type="hidden" id="cov">
+      <input type="hidden" id="spman"><!-- S manual guardada mientras S la calcula SAR/cámara -->
+      <div id="sarBox">
+        <label id="sobjL">Qué buscas <select id="sobj"></select></label>
+        <label id="pfdL">Lleva chaleco salvavidas <input id="pfd" type="checkbox"></label>
+        <label>Cómo de a fondo <select id="cf">
+          <option value="0.5">Rápida (≈ 39 % de encontrarlo)</option>
+          <option value="1">Normal (≈ 63 %)</option>
+          <option value="1.5">Minuciosa (≈ 78 %)</option>
+          <option value="2">Exhaustiva (≈ 86 %)</option>
+        </select></label>
+        <details class="sub"><summary>Condiciones: visibilidad, mar, fatiga</summary>
+        <div class="grid3">
+          <label>Desde <select id="craft"><option value="plane">Avión</option><option value="heli">Helicóptero</option></select></label>
+          <label>Visibilidad (NM) <input id="vis" type="number" step="1" min="1" max="30"></label>
+          <label>Mar <select id="sea"><option value="0">Calma</option><option value="1">Moderado</option><option value="2">Fuerte</option></select></label>
+        </div>
+        <label>Tripulación cansada (más de 3 h buscando) <input id="fat" type="checkbox"></label>
+        </details>
+        <details class="sub" id="driftSub"><summary>🌊 Deriva desde la última posición conocida</summary>
+        <label class="check">Calcular la deriva (persona u objeto en el agua) <input id="drift" type="checkbox"></label>
+        <div id="driftBox">
+          <div class="grid2">
+            <label>Última posición (lat.) <input id="lkpLat" type="number" step="0.0001"></label>
+            <label>(long.) <input id="lkpLon" type="number" step="0.0001"></label>
+          </div>
+          <button id="lkpCsp" class="sec small" type="button">📍 Marcar en el mapa</button>
+          <label class="check">Patrón centrado en el datum (sigue a la deriva hasta que llegas) <input id="dFollow" type="checkbox"></label>
+          <label>Qué buscas (deriva) <select id="dObj"></select></label>
+          <div class="grid2">
+            <label>Perdido hace (h) <input id="dHours" type="number" step="0.5" min="0"></label>
+            <label>Precisión de esa posición <select id="dX"></select></label>
+          </div>
+          <label class="check">Corriente generada por el viento (mar abierto, a más de 20 NM de la costa) <input id="dWc" type="checkbox"></label>
+          <div class="grid2">
+            <label>Corriente marina hacia (°) <input id="dCdir" type="number" step="10" min="0" max="360"></label>
+            <label>Corriente marina (kt) <input id="dCkt" type="number" step="0.1" min="0"></label>
+          </div>
+          <div id="driftInfo" class="note hint"></div>
+          <div id="bestInfo" class="note"></div>
+        </div>
+        </details>
+      </div>
+      <div id="camBox">
+        <input type="hidden" id="px"><!-- ancho de la foto en px, sale de los MP -->
+        <div class="grid3">
+          <label>Cámara (MP) <input id="mp" type="number" step="1" min="1" title="Megapíxeles del sensor (foto 3:2)"></label>
+          <label>Ángulo cámara (°) <input id="fov" type="number" step="1" min="5" max="170" list="fovList"></label>
+          <label>Solape lateral (%) <input id="ov" type="number" step="5" min="0" max="90" list="ovList"></label>
+        </div>
+        <div class="grid2">
+          <label>Calidad deseada <select id="gsd">
+            <option value="">A mano (según la altitud)</option>
+            <option value="3">Muy alta (3 cm/px)</option>
+            <option value="5">Alta (5 cm/px)</option>
+            <option value="10">Media (10 cm/px)</option>
+            <option value="20">Baja (20 cm/px)</option>
+            <option value="50">Vista general (50 cm/px)</option>
+          </select></label>
+        </div>
+        <details class="sub"><summary>Altura sobre el terreno</summary>
+          <label>Altura sobre el terreno (ft) <input id="agl" type="number" step="100" placeholder="= altitud"></label>
+        </details>
+        <datalist id="fovList">
+          <option value="74">Objetivo 24 mm (full frame)</option>
+          <option value="54">Objetivo 35 mm (full frame)</option>
+          <option value="40">Objetivo 50 mm (full frame)</option>
+          <option value="24">Objetivo 85 mm (full frame)</option>
+          <option value="70">Dron típico</option>
+        </datalist>
+        <datalist id="ovList">
+          <option value="20">Cobertura mínima</option>
+          <option value="30">Fotografía aérea estándar</option>
+          <option value="60">Ortofoto / modelo 3D</option>
+        </datalist>
+      </div>
+      <div id="covInfo" class="note hint"></div>
+    </div>
+  </details>
 
   <details class="card" open>
-    <summary><b class="step">1</b> Avión y vuelo</summary>
+    <summary><b class="step">2</b> Avión y salida</summary>
     <div class="body">
       <label>Avión <select id="acft">
         <option value="custom">Personalizado (usa tu TAS)</option>
@@ -60,91 +150,33 @@ load('data/costa.js', 'window.COAST = []');
         <label>Salida (ICAO) <input id="dep" list="apts"><span id="depName" class="hint"></span></label>
         <label>Destino (ICAO) <input id="arr" list="apts"><span id="arrName" class="hint"></span></label>
       </div>
-      <label>Posición de salida <select id="park"></select></label>
       <div class="grid3">
         <label>TAS búsqueda (kt) <input id="tas" type="number" step="5"></label>
         <label>Altitud búsqueda (ft) <input id="alt" type="number" step="100"></label>
         <label>Crucero (ft) <input id="cruise" type="number" step="500" placeholder="= búsqueda"></label>
       </div>
+      <details class="sub"><summary>Posición de salida (parking)</summary>
+        <label>Posición de salida <select id="park"></select></label>
+      </details>
+      <details class="sub"><summary>⛽ Autonomía y reserva</summary>
       <div class="grid2">
         <label>Autonomía con el combustible que llevas (min) <input id="endur" type="number" step="10" min="0" placeholder="sin límite"></label>
         <label>Reserva final (min) <input id="resv" type="number" step="5" min="0"></label>
       </div>
+      </details>
+      <details class="sub" id="windSub"><summary>💨 Viento</summary>
       <label>Viento real (METAR + en ruta a tu altitud) <input id="wreal" type="checkbox"></label>
       <div class="grid2">
         <label>Viento de (° true) <input id="wdir" type="number" step="10" min="0" max="360"></label>
         <label>Viento (kt) <input id="wkt" type="number" step="5" min="0"></label>
       </div>
       <div id="windInfo" class="note hint"></div>
-      <button id="ideal" class="small primary">✨ Calcular velocidad, altitud y rumbo ideales</button>
-      <button id="sim" class="small sec" title="Inventa un caso que encaje con el avión elegido: búsqueda en el mar (con deriva) o encargo de fotografía">🎲 Simular un caso con este avión</button>
-      <div id="simInfo" class="note"></div>
-      <div id="idealInfo" class="note hint"></div>
-    </div>
-  </details>
-
-  <details class="card" open id="covCard">
-    <summary><b class="step">2</b> Qué vas a hacer</summary>
-    <div class="body">
-      <div class="seg">
-        <input type="radio" name="covR" id="covSar" value="sar"><label for="covSar">🔎 Buscar (SAR)</label>
-        <input type="radio" name="covR" id="covCam" value="cam"><label for="covCam">📷 Fotografía</label>
-        <input type="radio" name="covR" id="covMan" value="man"><label for="covMan">✏ Libre</label>
-      </div>
-      <input type="hidden" id="cov">
-      <input type="hidden" id="spman"><!-- S manual guardada mientras S la calcula SAR/cámara -->
-      <div id="sarBox">
-        <label>Qué buscas <select id="sobj"></select></label>
-        <label id="pfdL">Lleva chaleco salvavidas <input id="pfd" type="checkbox"></label>
-        <div class="grid3">
-          <label>Desde <select id="craft"><option value="plane">Avión</option><option value="heli">Helicóptero</option></select></label>
-          <label>Visibilidad (NM) <input id="vis" type="number" step="1" min="1" max="30"></label>
-          <label>Mar <select id="sea"><option value="0">Calma</option><option value="1">Moderado</option><option value="2">Fuerte</option></select></label>
-        </div>
-        <label>Cómo de a fondo <select id="cf">
-          <option value="0.5">Rápida (≈ 39 % de encontrarlo)</option>
-          <option value="1">Normal (≈ 63 %)</option>
-          <option value="1.5">Minuciosa (≈ 78 %)</option>
-          <option value="2">Exhaustiva (≈ 86 %)</option>
-        </select></label>
-        <label>Tripulación cansada (más de 3 h buscando) <input id="fat" type="checkbox"></label>
-      </div>
-      <div id="camBox">
-        <div class="grid2">
-          <label>Calidad deseada <select id="gsd">
-            <option value="">— elegir —</option>
-            <option value="3">Muy alta (3 cm/px)</option>
-            <option value="5">Alta (5 cm/px)</option>
-            <option value="10">Media (10 cm/px)</option>
-            <option value="20">Baja (20 cm/px)</option>
-            <option value="50">Vista general (50 cm/px)</option>
-          </select></label>
-          <label>Altura sobre el terreno (ft) <input id="agl" type="number" step="100" placeholder="= altitud"></label>
-        </div>
-        <div class="grid3">
-          <label>Ángulo cámara (°) <input id="fov" type="number" step="1" min="5" max="170" list="fovList"></label>
-          <label>Solape lateral (%) <input id="ov" type="number" step="5" min="0" max="90" list="ovList"></label>
-          <label>Ancho foto (px) <input id="px" type="number" step="500" min="500"></label>
-        </div>
-        <datalist id="fovList">
-          <option value="74">Objetivo 24 mm (full frame)</option>
-          <option value="54">Objetivo 35 mm (full frame)</option>
-          <option value="40">Objetivo 50 mm (full frame)</option>
-          <option value="24">Objetivo 85 mm (full frame)</option>
-          <option value="70">Dron típico</option>
-        </datalist>
-        <datalist id="ovList">
-          <option value="20">Cobertura mínima</option>
-          <option value="30">Fotografía aérea estándar</option>
-          <option value="60">Ortofoto / modelo 3D</option>
-        </datalist>
-      </div>
-      <div id="covInfo" class="note hint"></div>
+      </details>
     </div>
   </details>
 
   <details class="card" open>
-    <summary><b class="step">3</b> Dónde: zona o patrón</summary>
+    <summary><b class="step">3</b> Zona o patrón</summary>
     <div class="body">
       <select id="type">
         <optgroup label="Zona (fotografía / búsqueda en un área)">
@@ -181,10 +213,12 @@ load('data/costa.js', 'window.COAST = []');
         <input type="hidden" id="area">
         <div id="areaInfo" class="note hint"></div>
       </div>
-      <div class="grid2" id="cspRow">
+      <details class="sub" id="cspRow"><summary>Coordenadas del CSP</summary>
+      <div class="grid2">
         <label>CSP latitud <input id="lat" type="number" step="0.0001"></label>
         <label>CSP longitud <input id="lon" type="number" step="0.0001"></label>
       </div>
+      </details>
       <div class="grid2">
         <label><span id="hdgTxt">Rumbo inicial (° true)</span> <input id="hdg" type="number" step="1"></label>
         <label id="autoL" class="check">Rumbo automático (el más rápido) <input id="auto" type="checkbox"></label>
@@ -192,26 +226,6 @@ load('data/costa.js', 'window.COAST = []');
       <label id="lenL"><span id="lenTxt"></span> <input id="len" type="number" min="0"></label>
       <label id="spL"><span id="spTxt">Separación S</span> <input id="sp" type="number" min="0"></label>
       <label id="nL"><span id="nTxt"></span> <input id="n" type="number" step="1" min="1"></label>
-      <label class="check">🌊 Calcular la deriva (persona u objeto en el agua) <input id="drift" type="checkbox"></label>
-      <div id="driftBox">
-        <div class="grid2">
-          <label>Última posición conocida: lat. <input id="lkpLat" type="number" step="0.0001"></label>
-          <label>long. <input id="lkpLon" type="number" step="0.0001"></label>
-        </div>
-        <button id="lkpCsp" class="sec small" type="button">📍 Usar el CSP actual como última posición</button>
-        <label>Qué flota <select id="dObj"></select></label>
-        <div class="grid2">
-          <label>Perdido hace (h) <input id="dHours" type="number" step="0.5" min="0"></label>
-          <label>Precisión de esa posición <select id="dX"></select></label>
-        </div>
-        <label class="check">Corriente generada por el viento (mar abierto, a más de 20 NM de la costa) <input id="dWc" type="checkbox"></label>
-        <div class="grid2">
-          <label>Corriente marina hacia (°) <input id="dCdir" type="number" step="10" min="0" max="360"></label>
-          <label>Corriente marina (kt) <input id="dCkt" type="number" step="0.1" min="0"></label>
-        </div>
-        <div id="driftInfo" class="note hint"></div>
-        <div id="bestInfo" class="note"></div>
-      </div>
     </div>
   </details>
 
@@ -249,6 +263,7 @@ load('data/costa.js', 'window.COAST = []');
       <label id="vs2L">Sector: 2ª pasada girada 30° <input id="vs2" type="checkbox"></label>
       <label>Ver trayectoria prevista <input id="trail" type="checkbox"></label>
       <label>Nombre del fichero .pln <input id="fname"></label>
+    <button id="reset" class="sec small" style="width:100%" title="Vuelve a los valores estándar y corrige los giros que no caben. Mantiene zona, aeropuertos y unidades.">↺ Volver a los valores estándar</button>
     </div>
   </details>
 
@@ -334,7 +349,7 @@ load('data/costa.js', 'window.COAST = []');
   <details class="card">
     <summary>❔ Ayuda</summary>
     <div class="body hint legend">
-      <p><b>Cómo se usa:</b> ① elige avión y aeropuertos · ② qué vas a hacer · ③ dibuja la zona o elige un patrón · pulsa ✨ · guarda en el GTN750 o copia el plan ICAO.</p>
+      <p><b>Cómo se usa:</b> ① elige avión y aeropuertos · ② qué vas a hacer · ③ dibuja la zona o elige un patrón · pulsa ✨ Optimizar · guarda en el GTN750 o copia el plan ICAO.</p>
       <p>Clic en el mapa = mover el CSP (rojo). Arrastra el punto azul = rumbo y tamaño del patrón.</p>
       <p><span><i style="color:var(--std)">Gris cursiva</i> = valor estándar</span> · <span style="color:var(--ok)">verde</span> = lo ha cambiado ✨</p>
       <p>Guardar en GTN750: la primera vez elige la carpeta y se recuerda (clic derecho en el botón para cambiarla):<br>D:\MSFS2024\Packages\Community\pms50-instrument-gtn750\fpl\gtn750</p>
@@ -348,17 +363,20 @@ load('data/costa.js', 'window.COAST = []');
     <label>Vuelo <select id="part"></select></label>
     <button id="saveAll" class="sec small" title="Guarda todos los vuelos en la carpeta del GTN750 (fpl_1, fpl_2…)">Guardar todos</button>
   </div>
+  <button id="opt" class="primary" title="Patrón por la deriva (si la hay), velocidad, altitud y rumbo, y corrige los giros que no quepan">✨ Optimizar</button>
+  <details class="sub" id="idealBox"><summary>Qué ha cambiado ✨</summary><div id="idealInfo" class="note hint"></div></details>
   <div id="stats"></div>
   <div id="warn"></div>
-  <div class="grid2" style="margin-top:8px">
-    <button id="save">Guardar en GTN750</button>
-    <button id="dl" class="sec">Descargar .pln</button>
+  <div class="grid3">
+    <button id="save" title="Guardar en la carpeta del GTN750">💾 GTN750</button>
+    <button id="dl" class="sec" title="Descargar el plan .pln">⬇ .pln</button>
+    <button id="kb" class="sec" title="Hoja de vuelo imprimible (kneeboard)">🗒 Hoja</button>
   </div>
-  <button id="kb" class="sec" style="width:100%;margin-top:6px">🗒 Hoja de vuelo (kneeboard)</button>
   <div id="msg"></div>
 </footer>
 </div>
 <div id="map"></div>
+<div id="wm">SAR PLANNER · GUILLERMOCORT.ES</div>
 
 <script>load('app/geo.js'); load('app/ui.js');</script>
 </body>

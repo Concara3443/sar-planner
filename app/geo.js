@@ -40,7 +40,7 @@ const GTN_BANK = 17.5;
 function gtnTurns(wps, R) {
   const n = wps.length, P = wps.map(w => w.pos);
   const ang = P.map((q, i) => (i && i < n - 1 ? ((brg(q, P[i + 1]) - brg(P[i - 1], q) + 540) % 360) - 180 : 0));
-  const over = ang.map((a, i) => i > 0 && i < n - 1 && (wps[i].ext || Math.abs(a) > 175));
+  const over = ang.map((a, i) => i > 0 && i < n - 1 && ((wps[i].ext && !wps[i].fb) || Math.abs(a) > 175));
   const t = ang.map((a, i) => (over[i] || Math.abs(a) < 1 ? 0 : Math.tan(Math.abs(a) / 2 * RAD)));
   // ponytail: reparto por parejas; el GTN encadena la restricción hacia delante (un poco más de sitio en cadenas de tramos cortos)
   return ang.map((a, i) => {
@@ -378,13 +378,30 @@ function buildOne(p) {
     const turnDeg = i > 0 && i < out.length - 1 ? Math.abs((brg(w.pos, out[i + 1].pos) - brg(out[i - 1].pos, w.pos) + 540) % 360 - 180) : 0;
     if (!w.turn || turnDeg <= 30) return;
     // Vuelta a la pasada de al lado: si caben los dos giros de 90° (S ≥ 2r) el GTN la hace sola, sin puntos de más;
-    // si no, un solo punto de sobrepaso (gota)
+    // si no, gota fly-by. Otros giros: un punto de sobrepaso
     const S = out[i + 1] ? reversalGap(out[i - 1].pos, w.pos, out[i + 1].pos, out[i + 2]?.pos) : null;
-    if (S === null || S < 2 * p.radius) res.push({ name: (w.name + 'X').slice(0, 10), pos: proj(w.pos, brg(out[i - 1].pos, w.pos), p.radius), turn: false, ext: true });
+    if (S !== null && S < 2 * p.radius) res.push(...teardrop(out[i - 1].pos, w, out[i + 1].pos, out[i + 2].pos, S, p.radius));
+    else if (S === null) res.push({ name: (w.name + 'X').slice(0, 10), pos: proj(w.pos, brg(out[i - 1].pos, w.pos), p.radius), turn: false, ext: true });
   });
   res.areaBrg = areaBrg;
   res.areaCells = out.areaCells;
   return res;
+}
+
+// Gota de la pasada A→E a la siguiente N→M (en sentido contrario, a S < 2r) como la vuela el GTN750: solo giros fly-by
+// de radio r encadenados, sin rectas entre ellos. En E abre α hacia fuera y vuelve con 180°+α, repartido en dos
+// puntos X e Y, hasta caer sobre la pasada siguiente: 2r·cos α = S. Si Y se pasa de N, adelanta el giro de E (punto W).
+function teardrop(A, w, N, M, S, r) {
+  const h = brg(A, w.pos), s = Math.sin((brg(w.pos, N) - h) * RAD) < 0 ? -1 : 1; // lado de la pasada siguiente
+  const al = Math.acos(S / (2 * r)) / RAD, be = (180 + al) / 2;
+  // ponytail: +0,1 % en cada tramo para que la diferencia esfera/plano (un metro) no deje el giro sin caber
+  const dE = r * Math.tan(al / 2 * RAD) * 1.001, dX = r * Math.tan(be / 2 * RAD) * 1.001;
+  const at = e => { const X = proj(proj(w.pos, h, e), h - s * al, dE + dX); return [X, proj(X, h - s * al + s * be, 2 * dX)]; };
+  const [X, Y] = at(0), t = dist(Y, N) * Math.cos((brg(Y, N) - brg(N, M)) * RAD); // t > 0: Y queda antes de N
+  const pt = (k, pos) => ({ name: (w.name + k).slice(0, 10), pos, turn: false, ext: true, fb: true });
+  if (t >= 1) return [pt('X', X), pt('Y', Y)];
+  if (t > -1) return [pt('X', X)]; // Y cae en N
+  return [pt('W', proj(w.pos, h, -t)), pt('X', at(-t)[0])];
 }
 
 // Separación lateral S entre la pasada A→E y la siguiente N→M si esta va en sentido contrario (vuelta de 180° a la
@@ -623,10 +640,21 @@ function bestProc(procs, apt, type, rwy, a, b) {
 // Patrones cuyo rumbo es libre (no lo fija la costa, la deriva o una ruta): se puede elegir el más rápido
 const AUTO_HDG = ['PS', 'SS', 'SSI', 'VS', 'CL', 'F8', 'OR', 'SPI'];
 // Rumbo inicial (de 5 en 5°) que hace más corto el vuelo completo salida → patrón → llegada, con el viento
-function bestHeading(p, from, to) {
+// CSP para que el patrón quede centrado en center (el datum de la deriva). Los que giran alrededor del CSP (SS, VS,
+// espiral, órbita, trébol, ocho) lo llevan en center; el resto (PS, CS, TSR, zigzag...) empieza en una esquina: se lleva
+// el centro de su rectángulo a center. ponytail: centro del rectángulo lat/lon, vale para patrones de decenas de NM
+function centeredCsp(p, center) {
+  if (['SS', 'SSI', 'VS', 'SPI', 'OR', 'CL', 'F8'].includes(p.type)) return center;
+  const w = buildPattern({ ...p, gota: false }), la = w.map(x => x.pos[0]), lo = w.map(x => x.pos[1]);
+  return [p.csp[0] + center[0] - (Math.min(...la) + Math.max(...la)) / 2, p.csp[1] + center[1] - (Math.min(...lo) + Math.max(...lo)) / 2];
+}
+// center: cada rumbo se prueba con el patrón centrado ahí (si no, al centrarlo cambiaría el mejor rumbo)
+function bestHeading(p, from, to, center) {
   let best = null;
   for (let h = 0; h < 360; h += 5) {
-    const w = buildPattern({ ...p, hdg: h }).map(x => x.pos);
+    const q = { ...p, hdg: h };
+    if (center) q.csp = centeredCsp(q, center);
+    const w = buildPattern(q).map(x => x.pos);
     const t = pathTime([...(from ? [from] : []), ...w, ...(to ? [to] : [])], p.tas || 120, p.wind);
     if (!best || t < best.t - 1) best = { h, t };
   }
