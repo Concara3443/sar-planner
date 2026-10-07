@@ -190,6 +190,8 @@ $('dObj').innerHTML = LEEWAY_GROUPS.map(([g, re]) => `<optgroup label="${g}">`
   + LEEWAY.filter(([k]) => re.test(k)).map(([k, es]) => `<option value="${k}">${es}</option>`).join('') + '</optgroup>').join('');
 function fillDX(want = $('dX').value) {
   const opts = POS_ERROR.filter(o => o[3].includes(posKind($('dObj').value)));
+  // misiones guardadas antes de las claves: X en NM → la opción más parecida
+  if (want !== '' && want != null && !isNaN(+want)) want = opts.reduce((a, b) => (Math.abs(b[2] - want) < Math.abs(a[2] - want) ? b : a))[0];
   $('dX').innerHTML = opts.map(([k, es, nm]) => `<option value="${k}">${es} (≈ ${String(nm).replace('.', ',')} NM)</option>`).join('');
   $('dX').value = opts.some(o => o[0] === want) ? want : opts[0][0];
 }
@@ -579,8 +581,13 @@ async function simulate() {
 }
 $('sim').onclick = simulate;
 $('tasHint').addEventListener('click', e => { if (e.target.dataset?.set) { e.preventDefault(); applySet(e.target.dataset.set); } });
+// Nueva: pide un segundo clic, como Borrar (sin ventanas de confirmación)
+let freshArmed = 0;
 $('fresh').onclick = () => {
-  if (!confirm('¿Empezar una misión nueva? Se pierde lo que no hayas guardado en «Misiones guardadas».')) return;
+  if (Date.now() - freshArmed > 3000) {
+    freshArmed = Date.now(); $('fresh').textContent = '¿Seguro?';
+    setTimeout(() => ($('fresh').textContent = '🗑 Nueva'), 3000); return;
+  }
   try { localStorage.removeItem('sarPlanner2'); } catch {}
   location.reload();
 };
@@ -1441,6 +1448,7 @@ function applyState(st) {
   if (st.cf) ensureCf(st.cf); // cobertura a medida guardada en la misión
   for (const f of FIELDS) if (f in st && !['park', 'sid', 'star', 'rwyDep', 'rwyArr'].includes(f)) $(f).type === 'checkbox' ? ($(f).checked = st[f]) : ($(f).value = st[f]);
   prevType = $('type').value; prevUnit = $('unit').value;
+  fillDX(st.dX);
   fillPositions(st.park ?? ''); fillProcs(st.sid ?? '', st.star ?? '', st.rwyDep ?? '', st.rwyArr ?? '');
   drawAreaHandles(); syncTrail(); update();
   map.fitBounds(L.latLngBounds((flight?.pts?.length ? flight.pts : wpts.map(w => w.pos))).pad(0.15));
