@@ -1362,8 +1362,11 @@ function kneeboard() {
   const tas = +$('tas').value, wind = { dir: +$('wdir').value, kt: +$('wkt').value };
   const pts = [...(D ? [{ name: o.dep, pos: D.pos }] : []), ...plan.pre, ...wpts, ...plan.post, ...(A ? [{ name: o.dest, pos: A.pos }] : [])];
   let cum = 0, cumD = 0;
+  // Tramos del patrón a la TAS de búsqueda; los tránsitos, a la de crucero (como el EET y el resumen de abajo)
+  const ip0 = (D ? 1 : 0) + plan.pre.length, ip1 = ip0 + wpts.length - 1;
   const rows = pts.slice(1).map((q, i) => {
-    const a = pts[i].pos, b = q.pos, d = dist(a, b), trk = brg(a, b), gs = groundSpeed(tas, trk, wind.dir, wind.kt), t = d / gs;
+    const kt = i >= ip0 && i + 1 <= ip1 ? tas : o.cruiseKt;
+    const a = pts[i].pos, b = q.pos, d = dist(a, b), trk = brg(a, b), gs = groundSpeed(kt, trk, wind.dir, wind.kt), t = d / gs;
     cum += t; cumD += d;
     return `<tr><td>${q.name}</td><td>${icaoCoord(b)}</td><td>${String(Math.round(trk)).padStart(3, '0')}</td>`
       + `<td>${String(Math.round((trk - mv + 360) % 360)).padStart(3, '0')}</td><td>${(d / NM).toFixed(1)}</td><td>${Math.round(gs / 0.514444)}</td>`
@@ -1379,7 +1382,10 @@ function kneeboard() {
   const sc = 300 / Math.max((x1 - x0) * k, y1 - y0, 1e-6), P = q => `${((q[1] - x0) * k * sc + 10).toFixed(1)},${((y1 - q[0]) * sc + 10).toFixed(1)}`;
   const svg = `<svg viewBox="0 0 ${((x1 - x0) * k * sc + 20).toFixed(0)} ${((y1 - y0) * sc + 20).toFixed(0)}" style="max-width:340px;max-height:340px;border:1px solid #999">`
     + `<polyline points="${all.map(P).join(' ')}" fill="none" stroke="#1565c0" stroke-width="1.5"/>`
-    + (D ? `<circle cx="${P(D.pos).split(',')[0]}" cy="${P(D.pos).split(',')[1]}" r="4" fill="#2e7d32"/>` : '') + '</svg>';
+    + (D ? `<circle cx="${P(D.pos).split(',')[0]}" cy="${P(D.pos).split(',')[1]}" r="4" fill="#2e7d32"/>` : '')
+    + (lastDrift ? [[lastDrift.d.datum, '#00838f', 'datum'], [[+$('lkpLat').value, +$('lkpLon').value], '#555', 'LKP']].map(([q, c, t]) => {
+      const [x, y] = P(q).split(','); return `<circle cx="${x}" cy="${y}" r="4" fill="${c}"/><text x="${+x + 6}" y="${+y + 4}" font-size="10" fill="${c}">${t}</text>`; }).join('') : '')
+    + '</svg>';
   const fpl = $('fplOut').value.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Hoja de vuelo ${o.callsign} ${o.dep}-${o.dest}</title><style>
     body{font:12px/1.35 Consolas,monospace;color:#111;margin:18px;max-width:820px} h1{font-size:18px;margin:0} h2{font-size:13px;border-bottom:2px solid #111;margin:16px 0 6px}
@@ -1391,11 +1397,17 @@ function kneeboard() {
     <div>${new Date().toUTCString().slice(0, 16)} · EOBT ${o.eobt}Z · EET ${hhmm(total)} · ${o.actype}/${o.wake} · reglas ${o.rules}, tipo ${o.ftype}</div>
     <h2>Misión</h2><div class="grid">
       <div>${$('typeHint').textContent}</div><div>${$('covInfo').innerText}</div>
-      <div>Búsqueda: ${$('alt').value} ft · ${tas} kt TAS · banco ${$('bank').value}°</div><div>Crucero: ${o.cruiseFt} ft · ${Math.round(o.cruiseKt)} kt</div>
+      <div>Búsqueda: ${$('alt').value} ft · ${tas} kt TAS · banco ${$('bank').value}°${realTas() ? ` (real para la misión: ${realTas().tas} kt)` : ''}</div><div>Crucero: ${o.cruiseFt} ft · ${Math.round(o.cruiseKt)} kt</div>
       <div>Viento: ${wind.kt ? String(wind.dir).padStart(3, '0') + '° / ' + wind.kt + ' kt' : 'calma / sin datos'}</div><div>Alternativo: ${o.altn || '—'}</div>
       ${$('windInfo').innerText ? `<div style="grid-column:1/3">${$('windInfo').innerText.replace(/\n/g, '<br>')}</div>` : ''}
       ${$('areaInfo').innerText && $('type').value === 'AREA' ? `<div style="grid-column:1/3">${$('areaInfo').innerText}</div>` : ''}
     </div>
+    ${lastDrift ? (() => { const d = lastDrift.d, f = v => v.toFixed(1).replace('.', ',');
+      return `<h2>Deriva</h2><div class="grid">
+      <div>Objeto: ${$('dObj').selectedOptions[0].text}</div><div>Última posición: ${icaoCoord([+$('lkpLat').value, +$('lkpLon').value])} (${$('dX').selectedOptions[0].text})</div>
+      <div>Datum: <b>${icaoCoord(d.datum)}</b></div><div>Deriva: ${f(d.driftNm)} NM hacia el ${String(Math.round(d.driftBrg)).padStart(3, '0')}° (leeway ${d.lwKt.toFixed(2).replace('.', ',')} kt ±${d.div}°)</div>
+      <div>Error probable: ${f(d.E)} NM</div><div>Área: ${f(2 * d.R)} × ${f(2 * d.R)} NM alrededor del datum</div>
+      <div style="grid-column:1/3">${$('driftInfo').innerText.split('\n')[0]}</div></div>`; })() : ''}
     <h2>Ruta y croquis</h2><div class="grid"><div>${svg}</div><div>${plan.pre.length || plan.post.length ? `Ida: ${plan.pre.map(q => q.name).join(' ') || 'directo'}<br>Vuelta: ${plan.post.map(q => q.name).join(' ') || 'directo'}<br><br>` : ''}
       Waypoints en el GTN: ${wpts.length + plan.pre.length + plan.post.length + 2}<br>${$('warn').innerText.replace(/\n/g, '<br>')}</div></div>
     <h2>Navegación</h2><table><tr><th>Punto</th><th>Coord.</th><th>°T</th><th>°M</th><th>NM</th><th>GS</th><th>Tramo</th><th>Acum.</th><th>NM acum.</th></tr>${rows}</table>
