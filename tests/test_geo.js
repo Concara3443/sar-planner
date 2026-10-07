@@ -154,6 +154,14 @@ for (const hdg of [0, 90]) {
   const crossing = legs.filter(([a, b]) => [0.2, 0.35, 0.5, 0.65, 0.8].some(t => !inside([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], U)));
   assert(new Set(q.map(x => x.name[0])).size >= 2 && crossing.length === 0, `U ${hdg}°: ${crossing.length} legs sobre el hueco`);
 }
+// Área convexa con pasadas más juntas que el diámetro de giro (entrelazado auto): una sola zona y todos los giros caben.
+// Antes el rumbo se elegía sin mirar los giros y un rombo salía a 46° en 3 zonas (y un cuadrilátero, en 9)
+{
+  const rombo = [[41.65188, 1.981659], [41.549186, 2.118988], [41.446329, 1.981659], [41.549186, 1.84433]]; // el rombo dibujado en la página, a 10 cm/px
+  const w = g.buildPattern({ type: "AREA", area: rombo, csp: rombo[0], hdg: 0, auto: true, il: "auto", sp: 424.108, radius: 1232.1040777974263, tas: 120, wind: {}, dir: 1, n: 1, len: NM, from: [41.519859, 2.10975] });
+  assert.equal(w.areaCells, 1, `rombo en ${w.areaCells} zonas a ${Math.round(w.areaBrg)}°`);
+  assert(g.gtnTurns(w, 1232.1040777974263).every(x => x.fit > 1 - 1e-6), "rombo: caben todos los giros");
+}
 ok("área: rumbo óptimo, viento, entrelazado, giros de 90° y áreas cóncavas");
 
 // ---------- División en vuelos (GTN750: 100 waypoints) ----------
