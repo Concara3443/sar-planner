@@ -9,7 +9,7 @@
 <!-- Generado por scripts\exportar_aeropuertos.py desde Little Navmap (MSFS 2024) -->
 <script>
 // Versión: súbela al cambiar cualquier .js o .css y el navegador los vuelve a pedir (si no, puede usar una copia vieja)
-const V = 14, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
+const V = 19, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
 document.write(`<link rel="stylesheet" href="app/sar.css?v=${V}">`);
 load('data/aeropuertos.js', 'window.AIRPORTS_DB = {}');
 load('data/navdata.js', 'window.NAV_DB = { nav: {}, proc: {} }');
@@ -156,6 +156,7 @@ load('data/costa.js', 'window.COAST = []');
         <label>Altitud búsqueda (ft) <input id="alt" type="number" step="100"></label>
         <label>Crucero (ft) <input id="cruise" type="number" step="500" placeholder="= búsqueda"></label>
       </div>
+      <div id="tasHint" class="hint"></div>
       <details class="sub"><summary>Posición de salida (parking)</summary>
         <label>Posición de salida <select id="park"></select></label>
       </details>

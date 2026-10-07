@@ -307,7 +307,7 @@ function handleOf(p) {
 }
 const showD = m => `${(m / unitM()).toLocaleString('es', { maximumFractionDigits: $('unit').value === 'm' ? 0 : 1 })} ${$('unit').value}`;
 
-let wpts = [], lastReds = 0, flight = null, lastTimes = {};
+let wpts = [], lastReds = 0, lastPatReds = 0, flight = null, lastTimes = {}, tasHintT = 0, lastRoute = null;
 // Plan actual: vuelos de la división, el que se ve (k), la ruta de ida/vuelta y el patrón completo
 const plan = { parts: [], k: 0, pre: [], post: [], all: [] };
 // Sobrevuelo: desde W (rumbo b1) gira con radio r hacia el lado sgn hasta apuntar a B (o pasarse), en pasos de 10°
@@ -320,6 +320,55 @@ function flyOverArc(W, b1, B, sgn, r) {
     if (Math.abs(need) < 10 || Math.sign(need) !== sgn) break;
   }
   return pts;
+}
+// Velocidad óptima del patrón tal y como está: prueba cada TAS entre la mínima del avión y su velocidad de búsqueda
+// (nunca más: no se busca ni se fotografía a crucero), rehace el patrón con ella (en SAR la S baja con la velocidad;
+// el entrelazado auto y la gota dependen del radio), descarta las que dejan giros sin caber y se queda con la que
+// acaba antes. Tiempo: tramos entre waypoints, quitando en cada giro lo que recorta (2D) y sumando su arco (r·giro).
+// Los giros se comprueban con el patrón metido en la ruta (R, del i0 al i1), como se dibuja: así cuentan también
+// el de entrada y el de salida, que comparten tramo con el tránsito.
+// ponytail: tiempo del patrón solo (sin tránsitos) y en los arcos sin viento
+function bestTas(p, R, i0, i1, top) {
+  const prof = PROFILES[$('acft').value] || PROFILES.custom, tas0 = $('tas').value;
+  const lo = prof.min, hi = Math.max(lo, top ?? prof.search ?? Math.max(+tas0 || 0, 120));
+  let best = null;
+  for (let tas = lo; tas <= hi; tas += 5) {
+    $('tas').value = tas; const ph = coverage(); // la S que sale a esa velocidad (SAR / cámara)
+    const q = { ...p, tas, radius: gtnRadius(tas, p.wind.kt || 0, +$('bank').value), sp: ph && ph.s > 0 ? ph.s : p.sp };
+    const w = buildPattern(q), t = gtnTurns(R.slice(0, i0).concat(w, R.slice(i1 + 1)), q.radius).slice(i0, i0 + w.length);
+    if (t.some(x => x.fit < 1 - 1e-6)) continue;
+    const arcs = t.reduce((a, x) => a + (x.ad >= 1 && !x.over ? 2 * x.D - x.r * x.ad * RAD : 0), 0);
+    const time = pathTime(w.map(x => x.pos), tas, p.wind) - arcs / (tas * 0.514444);
+    if (!best || time < best.time - 1) best = { tas, time };
+  }
+  $('tas').value = tas0;
+  return { best, hi };
+}
+// Velocidad real de trabajo de la misión, según lo que se hace:
+// - SAR: la de la tabla H-9 del IAMSAR con la que mejor se ve (avión 150 kt, helicóptero 60 kt; más rápido, menos
+//   franja vista), dentro de lo que vuela tu avión. La altitud no la cambia (cambia lo que ves, no la velocidad).
+// - Fotografía: la más rápida con fotos nítidas: que el avión no avance más de medio píxel en el disparo (1/2000 s)
+//   → v = GSD × 1000 (m/s). Depende de la altitud, porque el píxel en el suelo (GSD) crece con ella.
+// ponytail: obturación fija 1/2000 s; si tu cámara dispara más rápido, sube en proporción
+function realTas() {
+  const prof = PROFILES[$('acft').value] || PROFILES.custom, mode = $('cov').value, ph = coverage();
+  const clamp = v => Math.round(Math.min(prof.search ?? v, Math.max(prof.min, v)) / 5) * 5;
+  if (mode === 'sar') return { tas: clamp(SWEEP_SPEED[$('craft').value].kt[0]), why: `SAR: la de la tabla H-9 del IAMSAR con la que más se ve; más rápido se ve menos` };
+  if (mode === 'cam' && ph) {
+    const gsd = ph.swath / (+$('px').value || 6000), v = gsd * 1000 / 0.514444;
+    return { tas: clamp(v), why: `fotografía a ${Math.round(gsd * 100)} cm/px: más rápido, las fotos salen movidas (½ píxel a 1/2000 s → ${Math.round(v)} kt)`
+      + (v < prof.min ? `; tu avión no va tan despacio: a su mínima saldrán algo movidas, sube la altitud o usa un obturador más rápido` : '') };
+  }
+  return null;
+}
+function tasHintView(p, R, i0, i1) {
+  const real = realTas(), { best } = bestTas(p, R, i0, i1), cur = +$('tas').value;
+  const use = v => (Math.abs(v - cur) >= 5 ? ` · <a href="#" data-set="tas=${v}">usar</a>` : ' ✓');
+  const fit = real && bestTas(p, R, i0, i1, real.tas).best; // con el techo de la velocidad real
+  $('tasHint').innerHTML = (!best ? `<span style="color:var(--warn)">A ninguna velocidad de tu avión caben todos los giros: cambia la separación, entrelaza o activa la gota.</span>`
+      : `Acaba antes a <b>${best.tas} kt</b> (patrón ${Math.round(best.time / 60)} min, caben todos los giros)${use(best.tas)}`)
+    + (!real ? '' : `<br>Real para esta misión: <b>${real.tas} kt</b> (${real.why})`
+      + (fit && fit.tas === real.tas ? use(real.tas) : fit ? `; a esa no caben los giros, la más cercana que sí: <b>${fit.tas} kt</b>${use(fit.tas)}` : '; a esa no caben los giros'));
 }
 // Separación entre legs calculada: fotografía (franja según altura) o SAR visual (S = W / C). null = manual
 function coverage() {
@@ -527,7 +576,8 @@ async function simulate() {
   const lay = layer.getLayers().filter(l => l.getLatLng || l.getBounds);
   if (lay.length) map.fitBounds(L.featureGroup(lay).getBounds(), { padding: [30, 30] });
 }
-$('sim').onclick = () => { userType = false; simulate(); };
+$('sim').onclick = simulate;
+$('tasHint').addEventListener('click', e => { if (e.target.dataset?.set) { e.preventDefault(); applySet(e.target.dataset.set); } });
 $('fresh').onclick = () => {
   if (!confirm('¿Empezar una misión nueva? Se pierde lo que no hayas guardado en «Misiones guardadas».')) return;
   try { localStorage.removeItem('sarPlanner2'); } catch {}
@@ -649,6 +699,8 @@ function update() {
   let minFit = 1, patStart = 0, patEnd = 0; // minFit: fracción del radio actual que cabría en el giro más justo
   // Giros como los dibuja el GTN750 (gtnTurns): recorte D = r·tan(giro/2), radio menor si dos giros no caben en un tramo
   const WIDE = 125, tp = gtnTurns(R, p.radius);
+  lastRoute = { p, R, i0, i1 };
+  clearTimeout(tasHintT); tasHintT = setTimeout(() => tasHintView(p, R, i0, i1), 250);
   const oranges = [];
   for (let i = 1; i < R.length - 1; i++) {
     if (i === i0) patStart = path.length;
@@ -680,6 +732,7 @@ function update() {
   path.push(R[R.length - 1].pos);
   if (!A) patEnd = path.length - 1;
   // Giros que no caben: lo que vuela de verdad el autopiloto (se pasa y vuelve a la línea), en rojo
+  lastPatReds = redIdx.filter(([a, b]) => b >= patStart && a <= patEnd).length; // los del patrón (sin los del aeropuerto)
   const flown = flownPath(path, redIdx, p.radius);
   for (const sim of flown.sims) reds.push(L.polyline(sim, { pane: 'trail', color: '#ff3b3b', weight: 5 })
     .bindTooltip(`Giro que no cabe: el GTN750 lo dibuja más cerrado de lo que gira el avión (radio ${showD(p.radius)}); así lo vuela el autopiloto: se pasa y vuelve a la línea`));
@@ -929,7 +982,6 @@ $('areaClear').onclick = () => { setArea([]); setDrawing(false); drawAreaHandles
 $('type').addEventListener('change', () => { setDrawing(false); drawAreaHandles(); });
 // ↺ Patrón: tamaño estándar, rumbo automático, sin entrelazado, gota ni pasadas extra; en un área, borra el dibujo
 $('patReset').onclick = () => {
-  userType = false;
   if ($('type').value === 'AREA') return $('areaClear').click();
   for (const f of ['len', 'sp', 'n']) if (stdShown(f) !== undefined) $(f).value = stdShown(f);
   $('auto').checked = true; $('il').value = '1';
@@ -998,7 +1050,7 @@ function applySet(set) {
   update();
 }
 $('warn').addEventListener('click', e => { if (e.target.dataset?.set) applySet(e.target.dataset.set); });
-const hasTurnErrors = () => lastReds > 0 || !!document.querySelector('#warn button[data-set^="tas="]');
+const hasTurnErrors = () => lastPatReds > 0 || !!document.querySelector('#warn button[data-set^="tas="]');
 // Al pasar a SAR/cámara se guarda la S manual; al volver a Manual se recupera (si no, se quedaría la S calculada)
 for (const r of document.querySelectorAll('input[name=covR]')) r.addEventListener('change', () => {
   if ($('cov').value === 'man' && r.value !== 'man') $('spman').value = $('sp').value;
@@ -1042,16 +1094,13 @@ const PROFILES = {
 };
 const SEARCH_ALTS = [300, 500, 750, 1000, 1500, 2000, 2500, 3000];
 
-// keep: patrón elegido a mano, no tocar el rumbo (solo velocidad, altitud y entrelazado)
-function computeIdeal(keep = false) {
-  if (!keep) $('auto').checked = true; // rumbo: el más rápido (área o patrón de rumbo libre)
+function computeIdeal() {
+  $('auto').checked = true; // rumbo: el más rápido (área o patrón de rumbo libre)
   const prof = PROFILES[$('acft').value] || PROFILES.custom, mode = $('cov').value, why = [];
   const watch = ['alt', 'agl', 'tas', 'bank', 'il', 'craft'], before = Object.fromEntries(watch.map(f => [f, $(f).value]));
-  const userTas = +$('tas').value || 120;
   if (prof.craft === 'heli' && mode === 'sar') $('craft').value = 'heli';
-  // 1) Altitud (con el patrón elegido a mano no: en SAR la altitud cambia la separación y con ella el patrón)
-  if (keep) why.push(`altitud ${$('alt').value} ft: sin cambios (patrón elegido por ti)`);
-  else if (mode === 'sar') {
+  // 1) Altitud
+  if (mode === 'sar') {
     const obj = $('sobj').value, small = SWEEP_TINY.includes(obj);
     // Persona en el agua: como mucho 500 ft (por encima el chaleco ya no se ve 4 veces mejor y se busca bajo)
     const alts = SEARCH_ALTS.filter(a => (!small || a <= 1000) && (obj !== 'Person in Water' || a <= 500));
@@ -1063,37 +1112,38 @@ function computeIdeal(keep = false) {
   } else if (mode === 'cam') {
     why.push(`altitud ${$('agl').value || $('alt').value} ft: la que da la calidad elegida (cámbiala en «Calidad deseada»)`);
   } else why.push(`altitud ${$('alt').value} ft: sin cambios (con separación manual la altitud no influye en el patrón)`);
-  // 2) Velocidad: la más rápida (hasta el límite del avión) a la que caben los giros; compara con entrelazar
-  // Tope: la velocidad de búsqueda/trabajo del avión (buscar o fotografiar a crucero da peores resultados y giros enormes)
-  const cap = prof.search ?? userTas;
-  const minT = prof.min;
-  const tryCfg = (tas, il) => { $('tas').value = tas; $('il').value = il; update(); return { ok: !hasTurnErrors(), t: lastTimes.pat, tas, il }; };
-  const fastestFit = il => {
-    if (tryCfg(cap, il).ok) return { tas: cap, il };
-    if (!tryCfg(minT, il).ok) return null;
-    let lo = minT, hi = cap;
-    while (hi - lo > 2) { const m = Math.round((lo + hi) / 2); tryCfg(m, il).ok ? (lo = m) : (hi = m); }
-    return { tas: lo, il };
-  };
-  const ilOk = !!UI[$('type').value].il;
-  const cands = [fastestFit('1'), ilOk ? fastestFit('auto') : null].filter(Boolean)
-    .map(c => ({ ...c, t: tryCfg(c.tas, c.il).t }));
-  if (!cands.length) {
-    tryCfg(minT, ilOk ? 'auto' : '1');
-    if (!hasTurnErrors()) why.push(`velocidad ${minT} kt con ${$('bank').value}° de banco`);
-    else
-      why.push(`velocidad ${minT} kt (la mínima de ${prof.name}): ni así caben todos los giros; mira el aviso naranja`);
-  } else {
-    const best = cands.reduce((a, b) => (b.t < a.t - 1 ? b : a));
-    tryCfg(best.tas, best.il);
-    why.push(`velocidad ${best.tas} kt${best.tas === cap ? ` (${mode === 'sar' ? 'velocidad de búsqueda' : 'crucero'} de ${prof.name})` : ': la más rápida a la que caben los giros'}`
-      + (best.il !== '1' ? ' con entrelazado (acaba antes que volando más despacio sin él)' : ''));
-  }
+  idealSpeed(why);
   // Mostrarlo en los propios parámetros: campos cambiados en verde y resumen bajo el botón
   for (const f of watch) $(f).classList.toggle('changed', $(f).value !== before[f]);
   if ($('auto').checked && (AUTO_HDG.includes($('type').value) || $('type').value === 'AREA')) why.push(`rumbo ${$('hdg').value}°: el que hace más corto el vuelo`);
   $('idealInfo').innerHTML = '✨ ' + why.join('<br>✨ ') + `<br>Patrón: <b>${Math.round(lastTimes.pat / 60)} min</b>.`;
   $('msg').innerHTML = '';
+}
+// Velocidad de ✨ (añade el porqué a why): ver bestTas. Va aparte para repetirla al final de ✨ si el patrón cambia
+function idealSpeed(why) {
+  // Velocidad: con la que el patrón acaba antes sin giros que no caben; compara con entrelazar
+  // Tope: la velocidad real de la misión (realTas: SAR según la tabla H-9, fotografía sin fotos movidas); si no hay
+  // misión, la de búsqueda/trabajo del avión (buscar o fotografiar a crucero da peores resultados y giros enormes)
+  const prof = PROFILES[$('acft').value] || PROFILES.custom, userTas = +$('tas').value || 120;
+  const real = realTas(), cap = real ? real.tas : prof.search ?? userTas;
+  const minT = prof.min;
+  // Con y sin entrelazado: para cada uno, la velocidad con la que el patrón acaba antes sin giros que no caben (bestTas,
+  // la misma cuenta que el aviso bajo «TAS búsqueda»), y de las dos, la que acaba antes
+  const ilOk = !!UI[$('type').value].il;
+  const cands = (ilOk ? ['1', 'auto'] : [$('il').value]).map(il => {
+    $('il').value = il; update();
+    const { p, R, i0, i1 } = lastRoute, r = bestTas(p, R, i0, i1, cap).best;
+    return r && { ...r, il };
+  }).filter(Boolean);
+  if (!cands.length) {
+    $('tas').value = minT; $('il').value = ilOk ? 'auto' : $('il').value; update();
+    why.push(`velocidad ${minT} kt (la mínima de ${prof.name}): ni así caben todos los giros; mira el aviso naranja`);
+  } else {
+    const best = cands.reduce((a, b) => (b.time < a.time - 1 ? b : a));
+    $('tas').value = best.tas; $('il').value = best.il; update();
+    why.push(`velocidad ${best.tas} kt${best.tas === cap ? (real ? ` (real para esta misión: ${real.why})` : ` (la de búsqueda de ${prof.name})`) : ': con la que el patrón acaba antes y caben los giros'}`
+      + (best.il !== '1' ? ' con entrelazado (acaba antes que sin él)' : ''));
+  }
 }
 // Al tocar un campo a mano deja de estar resaltado; si se tocan otros parámetros el resumen deja de valer
 for (const f of ['alt', 'agl', 'tas', 'bank', 'il', 'craft']) $(f).addEventListener('input', () => $(f).classList.remove('changed'));
@@ -1101,16 +1151,16 @@ for (const f of ['alt', 'agl', 'tas', 'bank', 'il', 'craft']) $(f).addEventListe
 for (const el of [$('type'), $('area'), ...document.querySelectorAll('input[name=covR]')]) el.addEventListener('change', () => { $('idealInfo').innerHTML = ''; });
 // ✨ Optimizar, el único botón de «lo mejor»: con deriva, el patrón que más probabilidad da (bestSearch); luego velocidad,
 // altitud y rumbo (computeIdeal), otra vez el patrón con esos valores, y por último las correcciones de los avisos
-// Si el patrón lo has elegido tú (userType), ✨ no lo cambia: solo velocidad, altitud y entrelazado
-let userType = false;
-$('type').addEventListener('change', () => { userType = true; }); // solo los cambios a mano disparan «change»
 function optimize() {
-  const keep = userType, drift = !keep && $('cov').value === 'sar' && $('drift').checked;
+  const drift = $('cov').value === 'sar' && $('drift').checked;
   if (drift) bestSearch();
-  computeIdeal(keep);
-  if (drift) bestSearch();
-  autoFix(keep ? ['il=', 'tas='] : ['il=', 'tas=', 'Agrandar']);
-  if (keep) $('idealInfo').innerHTML += '<br>Patrón elegido por ti: no lo he cambiado. Para que ✨ elija el patrón, pulsa ↺ Restablecer el patrón.';
+  computeIdeal();
+  if (drift) { // el patrón se ajusta a la velocidad y altitud nuevas: la velocidad se recalcula para él
+    bestSearch();
+    const why = []; idealSpeed(why);
+    $('idealInfo').innerHTML = $('idealInfo').innerHTML.replace(/✨ velocidad[^<]*/, '✨ ' + why[0]);
+  }
+  autoFix(['il=', 'tas=', 'Agrandar']);
   if (hasTurnErrors()) $('msg').innerHTML = '<span style="color:var(--warn)">Aún hay giros que no caben: mira el aviso de arriba.</span>';
 }
 $('opt').onclick = optimize;
