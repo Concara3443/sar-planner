@@ -1486,7 +1486,7 @@ tlCtl.addTo(map);
 const legendCtl = L.control({ position: 'bottomright' });
 legendCtl.onAdd = () => {
   const d = L.DomUtil.create('details', 'legend-map');
-  d.open = true;
+  d.open = innerWidth > 700; // en el móvil taparía medio mapa
   d.innerHTML = `<summary>Leyenda</summary>
     <div><i style="border-color:#ffd23f;border-top-width:2px"></i>Plan: lo que va al GTN</div>
     <div><i style="border-color:#ffd23f;border-top-style:dashed;border-top-width:2px"></i>Tránsito (plan)</div>
@@ -1581,10 +1581,11 @@ $('tlStop').onclick = () => {
 };
 map.on('zoomend', () => flight && tlDraw());
 
-// Secciones abiertas/plegadas: se recuerdan entre sesiones
-document.querySelectorAll('details.card').forEach((d, i) => {
-  try { const v = localStorage.getItem('sarCard3_' + i); if (v !== null) d.open = v === '1'; } catch {}
-  d.addEventListener('toggle', () => { try { localStorage.setItem('sarCard3_' + i, d.open ? '1' : '0'); } catch {} });
+// Secciones y submenús abiertos/plegados: se recuerdan entre sesiones, por su nombre (no por posición: el orden cambia)
+document.querySelectorAll('details.card, details.sub').forEach(d => {
+  const k = 'sarOpen_' + d.querySelector('summary').textContent.replace(/[^\p{L} ]/gu, '').trim();
+  try { const v = localStorage.getItem(k); if (v !== null) d.open = v === '1'; } catch {}
+  d.addEventListener('toggle', () => { try { localStorage.setItem(k, d.open ? '1' : '0'); } catch {} });
 });
 
 drawAreaHandles();

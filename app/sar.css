@@ -98,4 +98,7 @@ footer .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin
 .kb-bar { display:flex; gap:8px; justify-content:flex-end; margin-bottom:8px; } .kb-bar button { width:auto; }
 .kb-overlay iframe { flex:1; border:0; border-radius:8px; background:#fff; }
 
-@media (max-width:700px) { body { flex-direction:column; height:auto; } #side { width:100%; } #map { height:70vh; } }
+/* Móvil: el mapa arriba (con flex:1 se quedaba en 0 px de alto) y el formulario debajo; la marca de agua vertical
+   taparía el formulario (el © y el enlace al código siguen en el mapa) */
+@media (max-width:700px) { body { flex-direction:column; height:auto; } #side { width:100%; border-right:none; } #map { order:-1; flex:none; height:60vh; } #wm { display:none; }
+  .tl { max-width:calc(100vw - 24px); flex-wrap:wrap; } .tl input[type=range] { width:110px; } .tl #tlTime { min-width:0; } }
