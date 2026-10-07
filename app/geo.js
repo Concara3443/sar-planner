@@ -248,10 +248,12 @@ function splitPlan(w, maxPts = 98) {
         if (/_1$/.test(w[c - d]?.name) && c - d > cuts[cuts.length - 1]) { c -= d; break; }
         if (/_1$/.test(w[c + d]?.name)) { c += d; break; }
       }
+      while (c > cuts[cuts.length - 1] + 1 && w[c - 1]?.ext) c--; // los puntos de la gota van con la vuelta, no al final del vuelo
       cuts.push(c);
     }
     cuts.push(w.length);
-    const parts = cuts.slice(1).map((c, i) => w.slice(cuts[i], c));
+    // al empezar un vuelo se llega en tránsito a la pasada: los puntos de la gota de la vuelta anterior sobran
+    const parts = cuts.slice(1).map((c, i) => w.slice(cuts[i], c)).map((pt, i) => (i ? pt.slice(Math.max(0, pt.findIndex(x => !x.ext))) : pt));
     if (parts.every(pt => pt.length && pt.length <= maxPts)) return parts;
   }
   return [w];

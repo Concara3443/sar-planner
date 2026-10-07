@@ -171,6 +171,12 @@ for (const n of [99, 150, 260, 400]) {
   assert(parts.flat().length === big.length && parts.every(p => p.length <= 98 && /_1$/.test(p[0].name)));
   assert(Math.max(...parts.map(p => p.length)) - Math.min(...parts.map(p => p.length)) <= 4, parts.map(p => p.length).join("+"));
 }
+// Con gota: ningún vuelo acaba con los puntos de la gota (la vuelta a la pasada siguiente va en el vuelo siguiente)
+{
+  const w = g.buildPattern({ ...base, type: "PS", gota: true, hdg: 0, len: 3 * NM, sp: 0.3 * NM, n: 60, radius: 1 * NM });
+  const parts = g.splitPlan(w);
+  assert(parts.length > 1 && parts.every(pt => !pt[pt.length - 1].ext && !pt[0].ext), "corte del plan antes de la gota, y ningún vuelo empieza con ella");
+}
 ok("división del plan en vuelos de ≤ 100 waypoints");
 
 // ---------- Ruta: coordenadas ICAO, puntos intermedios, SID/STAR, .pln IFR ----------
