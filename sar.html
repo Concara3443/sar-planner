@@ -9,7 +9,7 @@
 <!-- Generado por scripts\exportar_aeropuertos.py desde Little Navmap (MSFS 2024) -->
 <script>
 // Versión: súbela al cambiar cualquier .js o .css y el navegador los vuelve a pedir (si no, puede usar una copia vieja)
-const V = 19, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
+const V = 21, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
 document.write(`<link rel="stylesheet" href="app/sar.css?v=${V}">`);
 load('data/aeropuertos.js', 'window.AIRPORTS_DB = {}');
 load('data/navdata.js', 'window.NAV_DB = { nav: {}, proc: {} }');
@@ -42,11 +42,11 @@ load('data/costa.js', 'window.COAST = []');
       <div id="sarBox">
         <label id="sobjL">Qué buscas <select id="sobj"></select></label>
         <label id="pfdL">Lleva chaleco salvavidas <input id="pfd" type="checkbox"></label>
-        <label>Cómo de a fondo <select id="cf">
-          <option value="0.5">Rápida (≈ 39 % de encontrarlo)</option>
-          <option value="1">Normal (≈ 63 %)</option>
-          <option value="1.5">Minuciosa (≈ 78 %)</option>
-          <option value="2">Exhaustiva (≈ 86 %)</option>
+        <label title="Probabilidad de verlo si está en la zona (cobertura C)">Cómo de a fondo <select id="cf">
+          <option value="0.5">Rápida · 39 %</option>
+          <option value="1">Normal · 63 %</option>
+          <option value="1.5">Minuciosa · 78 %</option>
+          <option value="2">Exhaustiva · 86 %</option>
         </select></label>
         <details class="sub"><summary>Condiciones: visibilidad, mar, fatiga</summary>
         <div class="grid3">
@@ -89,12 +89,12 @@ load('data/costa.js', 'window.COAST = []');
         </div>
         <div class="grid2">
           <label>Calidad deseada <select id="gsd">
-            <option value="">A mano (según la altitud)</option>
-            <option value="3">Muy alta (3 cm/px)</option>
-            <option value="5">Alta (5 cm/px)</option>
-            <option value="10">Media (10 cm/px)</option>
-            <option value="20">Baja (20 cm/px)</option>
-            <option value="50">Vista general (50 cm/px)</option>
+            <option value="">A mano</option>
+            <option value="3">3 cm/px · muy alta</option>
+            <option value="5">5 cm/px · alta</option>
+            <option value="10">10 cm/px · media</option>
+            <option value="20">20 cm/px · baja</option>
+            <option value="50">50 cm/px · general</option>
           </select></label>
         </div>
         <details class="sub"><summary>Altura sobre el terreno</summary>
@@ -224,7 +224,7 @@ load('data/costa.js', 'window.COAST = []');
       </details>
       <div class="grid2">
         <label><span id="hdgTxt">Rumbo inicial (° true)</span> <input id="hdg" type="number" step="1"></label>
-        <label id="autoL" class="check">Rumbo automático (el más rápido) <input id="auto" type="checkbox"></label>
+        <label id="autoL" class="check" title="El rumbo que hace más corto el vuelo">Automático <input id="auto" type="checkbox"></label>
       </div>
       <label id="lenL"><span id="lenTxt"></span> <input id="len" type="number" min="0"></label>
       <label id="spL"><span id="spTxt">Separación S</span> <input id="sp" type="number" min="0"></label>

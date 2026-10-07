@@ -77,6 +77,7 @@ footer .grid2 button { margin:0; }
 footer .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px; } footer .grid3 button { margin:0; padding:7px 4px; }
 #fresh { white-space:nowrap; margin-left:auto; } #sim { white-space:nowrap; }
 #warn { color:var(--warn); font-size:12px; margin-top:6px; }
+#tasHint a, #warn a { color:#9cc3ff; }
 #msg { font-size:12px; margin-top:6px; word-break:break-word; max-height:22vh; overflow-y:auto; }
 #warn:empty, #msg:empty { display:none; }
 

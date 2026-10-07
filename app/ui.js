@@ -85,7 +85,7 @@ function ensureCf(c) {
   const v = String(+(+c).toFixed(2));
   $('cf').querySelector('[data-custom]')?.remove();
   if (![...$('cf').options].some(o => o.value === v)) {
-    const o = new Option(`A medida (C ${v.replace('.', ',')} ≈ ${Math.round((1 - Math.exp(-c)) * 100)} %)`, v);
+    const o = new Option(`A medida · ${Math.round((1 - Math.exp(-c)) * 100)} %`, v);
     o.dataset.custom = '1'; $('cf').add(o, 0);
   }
   $('cf').value = v;
@@ -330,7 +330,8 @@ function flyOverArc(W, b1, B, sgn, r) {
 // ponytail: tiempo del patrón solo (sin tránsitos) y en los arcos sin viento
 function bestTas(p, R, i0, i1, top) {
   const prof = PROFILES[$('acft').value] || PROFILES.custom, tas0 = $('tas').value;
-  const lo = prof.min, hi = Math.max(lo, top ?? prof.search ?? Math.max(+tas0 || 0, 120));
+  // techo: el que se pida, si no la de búsqueda del avión; el personalizado no tiene, se usa la real de la misión
+  const lo = prof.min, hi = Math.max(lo, top ?? prof.search ?? realTas()?.tas ?? Math.max(+tas0 || 0, 120));
   let best = null;
   for (let tas = lo; tas <= hi; tas += 5) {
     $('tas').value = tas; const ph = coverage(); // la S que sale a esa velocidad (SAR / cámara)
@@ -365,10 +366,10 @@ function tasHintView(p, R, i0, i1) {
   const real = realTas(), { best } = bestTas(p, R, i0, i1), cur = +$('tas').value;
   const use = v => (Math.abs(v - cur) >= 5 ? ` · <a href="#" data-set="tas=${v}">usar</a>` : ' ✓');
   const fit = real && bestTas(p, R, i0, i1, real.tas).best; // con el techo de la velocidad real
-  $('tasHint').innerHTML = (!best ? `<span style="color:var(--warn)">A ninguna velocidad de tu avión caben todos los giros: cambia la separación, entrelaza o activa la gota.</span>`
-      : `Acaba antes a <b>${best.tas} kt</b> (patrón ${Math.round(best.time / 60)} min, caben todos los giros)${use(best.tas)}`)
-    + (!real ? '' : `<br>Real para esta misión: <b>${real.tas} kt</b> (${real.why})`
-      + (fit && fit.tas === real.tas ? use(real.tas) : fit ? `; a esa no caben los giros, la más cercana que sí: <b>${fit.tas} kt</b>${use(fit.tas)}` : '; a esa no caben los giros'));
+  $('tasHint').innerHTML = (!best ? `<span style="color:var(--warn)">⏱ A ninguna velocidad caben los giros: cambia la S, entrelaza o activa la gota.</span>`
+      : `<span title="Probando cada velocidad de tu avión: con la que el patrón acaba antes sin giros que no caben">⏱ Acaba antes: <b>${best.tas} kt</b> · ${Math.round(best.time / 60)} min</span>${use(best.tas)}`)
+    + (!real ? '' : `<br><span title="Real para esta misión: ${real.why}">🎯 Real (${$('cov').value === 'sar' ? 'SAR' : 'foto'}): <b>${real.tas} kt</b></span>`
+      + (fit && fit.tas === real.tas ? use(real.tas) : fit ? ` · no caben los giros → <b>${fit.tas} kt</b>${use(fit.tas)}` : ' · no caben los giros'));
 }
 // Separación entre legs calculada: fotografía (franja según altura) o SAR visual (S = W / C). null = manual
 function coverage() {
@@ -727,7 +728,7 @@ function update() {
         .bindTooltip(`Giro de ${Math.round(ad)}°: el GTN750 empieza a girar ${showD(D)} antes y pasa a ${showD(cut)} del waypoint, sin sobrevolarlo.`));
     }
     if (i === i1) patEnd = path.length - 1;
-    if (fit < 1 - 1e-6) minFit = Math.min(minFit, fit);
+    if (fit < 1 - 1e-6 && i >= i0 && i <= i1) minFit = Math.min(minFit, fit); // los del aeródromo no se arreglan con el patrón
   }
   path.push(R[R.length - 1].pos);
   if (!A) patEnd = path.length - 1;
@@ -844,11 +845,11 @@ function update() {
       + (p.type !== 'TSR' && skip < (p.type === 'AREA' ? wpts.length / 2 : p.n) ? fixBtn(`Entrelazado salto ${skip}`, `il=${Math.min(skip, 4) === skip ? skip : 'auto'}`) : '');
   }
   // Resto de patrones: si algún giro no cabe, cuánto bajar la TAS o subir el banco para que quepan todos
-  if (!warn && reds.length) {
+  if (!warn && lastPatReds) {
     const bank = Math.min(+$('bank').value, GTN_BANK), wkt = p.wind.kt || 0;
     const maxTas = Math.floor((tas + wkt) * Math.sqrt(minFit * 0.99) - wkt);
     const minBank = Math.ceil(Math.atan(Math.tan(bank * RAD) / (minFit * 0.99)) / RAD);
-    warn = `${reds.length} giro${reds.length > 1 ? 's no caben' : ' no cabe'} a ${tas} kt y ${bank}° (en rojo en el mapa). Corregir con:<br>`
+    warn = `${lastPatReds} giro${lastPatReds > 1 ? 's del patrón no caben' : ' del patrón no cabe'} a ${tas} kt y ${bank}° (en rojo en el mapa). Corregir con:<br>`
       + (UI[p.type].il && p.il === '1' ? fixBtn('Entrelazado auto', 'il=auto') : '')
       + (maxTas >= TAS_MIN ? fixBtn(`TAS ≤ ${maxTas} kt`, `tas=${maxTas}`) : '') + (minBank <= GTN_BANK ? fixBtn(`Banco ${minBank}°`, `bank=${minBank}`) : '')
       // Con cámara: subir (menos calidad) separa los legs en proporción a la altura
@@ -870,6 +871,7 @@ function update() {
       grow.fs.map(f => `${f}=${fmt(+$(f).value * grow.k)}`).join(';'));
   }
   if (fuelWarn) warn += (warn ? '<br>' : '') + fuelWarn;
+  if (reds.length > lastPatReds) warn += (warn ? '<br>' : '') + `<span style="color:var(--muted)">En rojo al salir o llegar al aeródromo: tramos cortos de la SID/STAR o de la salida; el GTN los vuela así, no es cosa del patrón.</span>`;
   if (oranges.length) warn += (warn ? '<br>' : '') + `<span style="color:#ff9f1c">${oranges.length} giro${oranges.length > 1 ? 's' : ''} muy cerrado${oranges.length > 1 ? 's' : ''} (en naranja en el mapa): el avión no pasará exactamente por ese waypoint. Pasa el ratón por encima para ver cuánto.</span>`;
   // El GTN750 real admite 100 waypoints por plan (contando los aeropuertos)
   if (nParts > 1) warn += (warn ? '<br>' : '') + `<span style="color:var(--muted)">El plan completo tiene ${allW.length + pre.length + post.length + 2} waypoints y el GTN750 admite 100: `
