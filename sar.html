@@ -9,7 +9,7 @@
 <!-- Generado por scripts\exportar_aeropuertos.py desde Little Navmap (MSFS 2024) -->
 <script>
 // Versión: súbela al cambiar cualquier .js o .css y el navegador los vuelve a pedir (si no, puede usar una copia vieja)
-const V = 25, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
+const V = 26, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
 document.write(`<link rel="stylesheet" href="app/sar.css?v=${V}">`);
 load('data/aeropuertos.js', 'window.AIRPORTS_DB = {}');
 load('data/navdata.js', 'window.NAV_DB = { nav: {}, proc: {} }');
@@ -351,8 +351,11 @@ load('data/costa.js', 'window.COAST = []');
   <details class="card">
     <summary>❔ Ayuda</summary>
     <div class="body hint legend">
-      <p><b>Cómo se usa:</b> ① elige avión y aeropuertos · ② qué vas a hacer · ③ dibuja la zona o elige un patrón · pulsa ✨ Optimizar · guarda en el GTN750 o copia el plan ICAO.</p>
-      <p>Clic en el mapa = mover el CSP (rojo). Arrastra el punto azul = rumbo y tamaño del patrón.</p>
+      <p><b>Cómo se usa:</b> ① qué vas a hacer (buscar, fotografía o libre) · ② avión y aeropuertos · ③ elige un patrón o dibuja la zona · pulsa ✨ Optimizar · guarda en el GTN750 o copia el plan ICAO.</p>
+      <p>Clic en el mapa = mover el patrón (punto rojo: el centro; en SS, VS, espiral u órbita, el CSP). Arrastra el punto azul = rumbo y tamaño.</p>
+      <p>Búsqueda en el mar: en 🌊 Deriva pulsa 📍 y marca dónde se perdió; el patrón se centra solo en el datum (dónde estará cuando llegues).</p>
+      <p>Bajo «TAS búsqueda»: ⏱ la velocidad con la que el patrón acaba antes y 🎯 la real para la misión (SAR según el IAMSAR; fotografía sin fotos movidas).</p>
+      <p><span style="color:#ff3b3b">Rojo</span> = giro que no cabe, dibujado como lo vuela el autopiloto (se pasa y vuelve a la línea) · <span style="color:#ff9f1c">naranja</span> = giro tan cerrado que no pasa por el punto.</p>
       <p><span><i style="color:var(--std)">Gris cursiva</i> = valor estándar</span> · <span style="color:var(--ok)">verde</span> = lo ha cambiado ✨</p>
       <p>Guardar en GTN750: la primera vez elige la carpeta y se recuerda (clic derecho en el botón para cambiarla):<br>D:\MSFS2024\Packages\Community\pms50-instrument-gtn750\fpl\gtn750</p>
       <p>Datos de aeropuertos, fixes, SID y STAR: <code>python scripts/exportar_aeropuertos.py</code> (desde Little Navmap).</p>

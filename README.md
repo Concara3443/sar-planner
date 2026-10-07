@@ -17,8 +17,14 @@ doble clic, mejor en Chrome o Edge.
 - **Áreas a medida**: dibujas el polígono y calcula el barrido con el rumbo más rápido, teniendo en cuenta el viento.
   Las áreas cóncavas se dividen en zonas y los giros quedan fuera del área.
 - **Giros como el GTN750**: reproduce el cálculo de anticipación del GTN750 de PMS50 (motor LNAV de Working Title,
-  17,5° de banco a la velocidad sobre el suelo). Marca en rojo los giros que no caben y en naranja los que recortan
-  mucho, y propone correcciones con cifras exactas: TAS, separación, entrelazado o agrandar el patrón.
+  17,5° de banco a la velocidad sobre el suelo). Los giros que no caben salen en rojo dibujados como los vuela el
+  autopiloto (simulado: se pasa y vuelve a la línea, encadenando giros seguidos); los que recortan mucho, en naranja.
+  Propone correcciones con cifras exactas: TAS, separación, entrelazado o agrandar el patrón.
+- **Gota**: si las pasadas están más juntas que el diámetro de giro, la vuelta en bombilla con giros fly-by encadenados
+  al banco marcado, que cae justo sobre la pasada siguiente.
+- **Velocidad**, siempre a la vista bajo la TAS: con cuál acaba antes el patrón (probando cada velocidad: la gota, el
+  entrelazado y la separación cambian con ella) y cuál es la real para la misión (SAR según la tabla H-9 del IAMSAR;
+  fotografía, la más rápida sin fotos movidas a esa altitud).
 - **Entrelazado automático**: prueba todos los saltos y se queda con el que menos distancia vuela sin giros imposibles.
 - **Separación de pasadas real**:
   - SAR visual, con las tablas de anchura de barrido del USCG SAR Addendum (= IAMSAR vol. II) y sus correcciones por
@@ -29,10 +35,12 @@ doble clic, mejor en Chrome o Edge.
 - **Ruta completa**: SID y STAR de la base de datos de MSFS, con filtro por pista (pista en servicio elegida por el
   viento) y elección automática de la que acorta el camino a la zona. Admite puntos intermedios: fixes, VOR, NDB o
   coordenadas.
-- **Deriva**: desde la última posición conocida, el objeto (27 tipos de la tabla H-7), las horas perdido y la
-  corriente (por viento y marina) calcula dónde estará al llegar, el error probable y el cuadrado de búsqueda.
-- **✨ Mejor patrón**: con la deriva, el objeto, tu avión y tu autonomía, el área, la cobertura y el patrón que dan
-  más probabilidad de encontrarlo (POC × POD), comprobando que el vuelo real cabe en el tiempo.
+- **Deriva**: desde la última posición conocida (se marca en el mapa), el objeto (27 tipos de la tabla H-7), cómo se
+  conoce esa posición, las horas perdido y la corriente (por viento y marina) calcula dónde estará al llegar, el error
+  probable y el cuadrado de búsqueda. El patrón se centra solo en el datum.
+- **✨ Optimizar**: con la deriva, el objeto, tu avión y tu autonomía, el área, la cobertura y el patrón que dan
+  más probabilidad de encontrarlo (POC × POD), comprobando que el vuelo real cabe en el tiempo; las pasadas,
+  perpendiculares a la deriva y avanzando con ella. Además, la velocidad, la altitud y el rumbo.
 - **🎲 Simular un caso**: inventa una búsqueda en el mar (o un encargo de fotografía) que encaja con el avión elegido.
   La posición real queda oculta hasta que la revelas.
 - **Autonomía**: con tu autonomía y la reserva final, el tiempo que puedes estar en la zona o el punto de no retorno.
@@ -43,7 +51,7 @@ doble clic, mejor en Chrome o Edge.
   - Descargar el `.pln`.
   - Plan ICAO para VATSIM: reglas I/V/Y/Z, casillas 10 y 18 automáticas, con el avión que vuelas u otro tipo (por ejemplo,
     el AW139 real). Con botones de copiar, VATSIM y SimBrief.
-  - Hoja de vuelo estilo SimBrief.
+  - Hoja de vuelo estilo SimBrief, con la deriva y el datum en una búsqueda.
   - Planes de más de 100 waypoints divididos en varios vuelos.
 - **Misiones guardadas** con nombre: exportar e importar.
 
