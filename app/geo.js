@@ -218,12 +218,19 @@ function areaRoute(poly, p, legBrg) {
 // Con p.windAlign y viento, los legs van a favor/en contra del viento (fotos sin deriva lateral).
 function bestAreaRoute(poly, p) {
   const wind = p.wind || {}, v = Math.max(1, p.tas || 120) * 0.514444;
-  const angles = !p.auto ? [p.hdg] : p.windAlign && wind.kt > 0 ? [((wind.dir % 180) + 180) % 180] : [...Array(180).keys()];
+  const angles = !p.auto ? [p.hdg] : p.windAlign && wind.kt > 0 ? [((wind.dir % 180) + 180) % 180] : p.angles || [...Array(180).keys()];
   let best = null;
   for (const a of angles) {
     const out = areaRoute(poly, p, a);
     if (!out.length) continue;
-    const c = pathTime(out.map(w => w.pos), p.tas || 120, wind) + (out.length / 2 - 1) * Math.PI * p.radius / v;
+    // Tiempo de los tramos y de cada giro tal y como lo dibuja el GTN (su arco, no medio círculo fijo), y antes que
+    // nada, que quepan todos los giros: si no, un rumbo con una pasada más corta en una esquina ganaba aunque luego
+    // dejara giros sin caber (rombo a 46° en 3 zonas frente a 45° en una). Si no caben con ningún rumbo, manda el tiempo
+    const t = gtnTurns(out, p.radius);
+    // (el que no cabe, con el arco entero de radio R que vuela el avión: el recorte del GTN no se lo ahorra)
+    const c = pathTime(out.map(w => w.pos), p.tas || 120, wind)
+      + t.reduce((s, x) => s + (x.over ? Math.PI * p.radius : x.fit < 1 - 1e-6 ? p.radius * x.ad * RAD : x.r * x.ad * RAD - 2 * x.D) / v, 0)
+      + (t.some(x => x.fit < 1 - 1e-6) ? 1e6 : 0);
     if (!best || c < best.c) best = { brg: a, out, c };
   }
   return best;
@@ -312,6 +319,15 @@ function buildPattern(p) {
   // ponytail: saltos hasta 10 (o hasta n); más allá el tránsito entre pasadas ya no compensa
   const top = p.type === 'AREA' ? 10 : Math.min(10, p.n);
   const skips = [...Array(top).keys()].map(k => String(k + 1));
+  // Área con rumbo automático: los 180 rumbos se criban una vez (sin entrelazar, coste rápido) y solo los 12 mejores se
+  // prueban con cada salto; probarlos todos con los 10 saltos tardaba ~1 s por cambio en áreas grandes
+  if (p.type === 'AREA' && p.auto && p.area?.length >= 3 && !(p.windAlign && p.wind?.kt > 0)) {
+    const v = Math.max(1, p.tas || 120) * 0.514444, q = { ...p, il: '1' };
+    p = { ...p, angles: [...Array(180).keys()].map(a => {
+      const out = areaRoute(p.area, q, a);
+      return { a, c: out.length ? pathTime(out.map(w => w.pos), p.tas || 120, p.wind || {}) + (out.length / 2 - 1) * Math.PI * p.radius / v : Infinity };
+    }).sort((x, y) => x.c - y.c).slice(0, 12).map(x => x.a) };
+  }
   let best = null;
   for (const il of skips) {
     const w = buildOne({ ...p, il });

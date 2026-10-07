@@ -337,7 +337,8 @@ function bestTas(p, R, i0, i1, top) {
   let best = null;
   for (let tas = lo; tas <= hi; tas += 5) {
     $('tas').value = tas; const ph = coverage(); // la S que sale a esa velocidad (SAR / cámara)
-    const q = { ...p, tas, radius: gtnRadius(tas, p.wind.kt || 0, +$('bank').value), sp: ph && ph.s > 0 ? ph.s : p.sp };
+    const q = { ...p, tas, radius: gtnRadius(tas, p.wind.kt || 0, +$('bank').value), sp: ph && ph.s > 0 ? ph.s : p.sp,
+      ...(p.type === 'AREA' && p.areaBrg !== undefined ? { auto: false, hdg: p.areaBrg } : {}) }; // área: el rumbo ya elegido
     const w = buildPattern(q), t = gtnTurns(R.slice(0, i0).concat(w, R.slice(i1 + 1)), q.radius).slice(i0, i0 + w.length);
     if (t.some(x => x.fit < 1 - 1e-6)) continue;
     const arcs = t.reduce((a, x) => a + (x.ad >= 1 && !x.over ? 2 * x.D - x.r * x.ad * RAD : 0), 0);
@@ -654,6 +655,7 @@ function update() {
   // Rumbo automático: el que hace más corto el vuelo completo (en el área lo elige su propio cálculo)
   if (AUTO_HDG.includes(p.type) && $('auto').checked) $('hdg').value = p.hdg = bestHeading(p, from, to, followCenter(p));
   const allW = buildPattern(p);
+  p.areaBrg = allW.areaBrg;
   // Qué ha elegido «Auto»
   $('il').querySelector('[value=auto]').textContent = allW.il ? `Auto (${allW.il === '1' ? 'sin entrelazar' : 'salto ' + allW.il})` : 'Auto';
   // El GTN750 admite 100 waypoints por plan: si no cabe, se divide en vuelos (cortando al empezar un leg)
@@ -1150,6 +1152,12 @@ function idealSpeed(why) {
   } else {
     const best = cands.reduce((a, b) => (b.time < a.time - 1 ? b : a));
     $('tas').value = best.tas; $('il').value = best.il; update();
+    // En un área el rumbo automático cambia con la velocidad (el radio): se repite hasta que velocidad y rumbo casan
+    for (let k = 0; k < 3; k++) {
+      const { p, R, i0, i1 } = lastRoute, r = bestTas(p, R, i0, i1, cap).best;
+      if (!r || r.tas === best.tas) break;
+      best.tas = r.tas; $('tas').value = r.tas; update();
+    }
     why.push(`velocidad ${best.tas} kt${best.tas === cap ? (real ? ` (real para esta misión: ${real.why})` : ` (la de búsqueda de ${prof.name})`) : ': con la que el patrón acaba antes y caben los giros'}`
       + (best.il !== '1' ? ' con entrelazado (acaba antes que sin él)' : ''));
   }
