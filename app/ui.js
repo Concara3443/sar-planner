@@ -1109,7 +1109,7 @@ function computeIdeal() {
   $('auto').checked = true; // rumbo: el más rápido (área o patrón de rumbo libre)
   const prof = PROFILES[$('acft').value] || PROFILES.custom, mode = $('cov').value, why = [];
   const watch = ['alt', 'agl', 'tas', 'bank', 'il', 'craft'], before = Object.fromEntries(watch.map(f => [f, $(f).value]));
-  if (prof.craft === 'heli' && mode === 'sar') $('craft').value = 'heli';
+  if ($('acft').value !== 'custom' && mode === 'sar') $('craft').value = prof.craft;
   // 1) Altitud
   if (mode === 'sar') {
     const obj = $('sobj').value, small = SWEEP_TINY.includes(obj);
@@ -1186,7 +1186,8 @@ $('opt').onclick = optimize;
 $('acft').addEventListener('change', () => {
   const prof = PROFILES[$('acft').value];
   // TAS de la zona = velocidad de búsqueda/trabajo del avión (el tránsito va a crucero en el plan ICAO y la hoja de vuelo)
-  if (prof.search) { $('tas').value = prof.search; if (prof.craft === 'heli') $('craft').value = 'heli'; update(); }
+  // «Desde» sigue al avión en los dos sentidos (antes pasaba a helicóptero pero no volvía a avión)
+  if (prof.search) { $('tas').value = prof.search; $('craft').value = prof.craft; update(); }
 });
 // Escribir S a mano con SAR/cámara activos = pasar a Manual con ese valor
 $('sp').addEventListener('input', () => { if ($('cov').value !== 'man') { $('cov').value = 'man'; $('spman').value = ''; } });
