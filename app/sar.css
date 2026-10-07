@@ -75,7 +75,7 @@ footer .grid2 button { margin:0; }
 #stats div { display:flex; justify-content:space-between; gap:6px; padding:0; }
 #idealBox:has(#idealInfo:empty) { display:none; }
 footer .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px; } footer .grid3 button { margin:0; padding:7px 4px; }
-#sim { white-space:nowrap; margin-left:auto; }
+#fresh { white-space:nowrap; margin-left:auto; } #sim { white-space:nowrap; }
 #warn { color:var(--warn); font-size:12px; margin-top:6px; }
 #msg { font-size:12px; margin-top:6px; word-break:break-word; max-height:22vh; overflow-y:auto; }
 #warn:empty, #msg:empty { display:none; }

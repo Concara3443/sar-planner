@@ -48,6 +48,58 @@ function gtnTurns(wps, R) {
     return { ad: Math.abs(a), sgn: a > 0 ? 1 : -1, D: r * t[i], r, fit: r / R, over: over[i] };
   });
 }
+// Cómo vuela el avión la trayectoria del GTN (pts, lat/lon) donde tiene giros más cerrados que su radio R:
+// reds = [[a, b]] tramos de pts con esos giros. Desde el inicio de cada uno se simula el autopiloto: apunta a un
+// punto de la trayectoria L por delante (guiado L1) sin girar nunca más cerrado que R, se pasa y vuelve a la línea
+// solo; si por el camino llega a otro giro que no cabe, lo encadena. Cuando vuelve a ir sobre la línea, se une.
+// Plano local (vale para decenas de NM). Devuelve { pts, sims: tramos simulados, at: índice nuevo de cada punto }.
+function flownPath(pts, reds, R) {
+  if (!reds.length) return { pts, sims: [], at: pts.map((_, i) => i) };
+  const f = localFrame(pts), q = pts.map(f.fw), n = q.length;
+  const S = [0]; // distancia acumulada
+  for (let j = 1; j < n; j++) S.push(S[j - 1] + Math.hypot(q[j][0] - q[j - 1][0], q[j][1] - q[j - 1][1]));
+  const hdOf = j => Math.atan2(q[j + 1][0] - q[j][0], q[j + 1][1] - q[j][1]);
+  const at = (s, j) => { // punto de la trayectoria a la distancia s (buscando desde el tramo j)
+    while (j < n - 2 && S[j + 1] < s) j++;
+    const k = Math.min(1, Math.max(0, (s - S[j]) / ((S[j + 1] - S[j]) || 1)));
+    return [q[j][0] + (q[j + 1][0] - q[j][0]) * k, q[j][1] + (q[j + 1][1] - q[j][1]) * k];
+  };
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const step = R / 12, look = R * 0.8, out = [], map = new Array(n), sims = [];
+  let i = 0;
+  for (let k = 0; k < reds.length; k++) {
+    let [a, b] = reds[k];
+    if (a < i) continue; // ya volado dentro de la simulación anterior
+    for (; i <= a; i++) { map[i] = out.length; out.push(q[i]); }
+    // Objetivo (carrot) a L por delante del punto más cercano, que además avanza siempre un poco: si el objetivo
+    // quedara dentro del círculo de giro el avión daría vueltas sin fin
+    let p = q[a], hd = hdOf(Math.max(0, a - 1)), seg = a, sim = [p], ok = false, sc = S[a];
+    for (let it = 0; it < 20000; it++) {
+      // punto de la trayectoria más cercano, solo hacia delante y cerca del objetivo (para no saltar a otra pasada)
+      let best = { d: Infinity, j: seg, s: S[seg] };
+      for (let j = seg; j < n - 1 && S[j] <= sc + step; j++) {
+        const [x1, y1] = q[j], dx = q[j + 1][0] - x1, dy = q[j + 1][1] - y1, l2 = dx * dx + dy * dy || 1;
+        const t = Math.min(1, Math.max(0, ((p[0] - x1) * dx + (p[1] - y1) * dy) / l2)), d = Math.hypot(p[0] - x1 - dx * t, p[1] - y1 - dy * t);
+        if (d < best.d) best = { d, j, s: S[j] + t * Math.sqrt(l2) };
+      }
+      seg = best.j;
+      if (seg >= b && best.d < R * 0.02 && Math.abs(wrap(hd - hdOf(seg))) < 0.05) { ok = true; break; } // de vuelta en la línea
+      // el objetivo llega a otro giro que no cabe antes de volver a la línea: se encadena
+      while (k + 1 < reds.length && S[reds[k + 1][0]] <= sc) b = Math.max(b, reds[++k][1]);
+      if (best.s >= S[n - 1] - step) break;
+      sc = Math.min(Math.max(sc + step * 0.6, best.s + look), best.s + 2 * R); // sin escaparse lejos del avión
+      const tg = at(sc, seg);
+      hd += Math.max(-step / R, Math.min(step / R, wrap(Math.atan2(tg[0] - p[0], tg[1] - p[1]) - hd)));
+      p = [p[0] + step * Math.sin(hd), p[1] + step * Math.cos(hd)];
+      out.push(p); sim.push(p);
+    }
+    sims.push(sim.map(f.bw));
+    i = ok ? seg + 1 : n - 1;
+    for (let j = a + 1; j < i; j++) map[j] = out.length - 1;
+  }
+  for (; i < n; i++) { map[i] = out.length; out.push(q[i]); }
+  return { pts: out.map(f.bw), sims, at: map };
+}
 // Un giro de más de 90° al entrar o salir de un leg se anticipa más de R y el GTN recortaría el leg dentro del área.
 // Alarga el leg moviendo q (alejándolo de fixed) hasta que el giro hacia/desde other quepa en lo que sobra fuera
 // del área (R de squareEnds más lo alargado). Si no se consigue (el otro punto está demasiado cerca) lo deja como está.
@@ -643,10 +695,15 @@ const AUTO_HDG = ['PS', 'SS', 'SSI', 'VS', 'CL', 'F8', 'OR', 'SPI'];
 // CSP para que el patrón quede centrado en center (el datum de la deriva). Los que giran alrededor del CSP (SS, VS,
 // espiral, órbita, trébol, ocho) lo llevan en center; el resto (PS, CS, TSR, zigzag...) empieza en una esquina: se lleva
 // el centro de su rectángulo a center. ponytail: centro del rectángulo lat/lon, vale para patrones de decenas de NM
-function centeredCsp(p, center) {
-  if (['SS', 'SSI', 'VS', 'SPI', 'OR', 'CL', 'F8'].includes(p.type)) return center;
+const AROUND_CSP = ['SS', 'SSI', 'VS', 'SPI', 'OR', 'CL', 'F8'];
+function patternCenter(p) {
+  if (AROUND_CSP.includes(p.type)) return p.csp;
   const w = buildPattern({ ...p, gota: false }), la = w.map(x => x.pos[0]), lo = w.map(x => x.pos[1]);
-  return [p.csp[0] + center[0] - (Math.min(...la) + Math.max(...la)) / 2, p.csp[1] + center[1] - (Math.min(...lo) + Math.max(...lo)) / 2];
+  return [(Math.min(...la) + Math.max(...la)) / 2, (Math.min(...lo) + Math.max(...lo)) / 2];
+}
+function centeredCsp(p, center) {
+  const c = patternCenter(p);
+  return [p.csp[0] + center[0] - c[0], p.csp[1] + center[1] - c[1]];
 }
 // center: cada rumbo se prueba con el patrón centrado ahí (si no, al centrarlo cambiaría el mejor rumbo)
 function bestHeading(p, from, to, center) {

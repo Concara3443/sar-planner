@@ -52,9 +52,26 @@ const WIND_CURRENT_N = [
   [[282, 23, 123, 220, 314, 44, 130, 211, 286, 355, 56, 111, 158], [0.006, 0.006, 0.006, 0.005, 0.005, 0.005, 0.005, 0.004, 0.004, 0.004, 0.004, 0.003, 0.003]],
   [[298, 54, 169, 281, 30, 134, 233, 327, 53, 132, 204, 267, 321], [0.005, 0.005, 0.005, 0.005, 0.005, 0.004, 0.004, 0.004, 0.004, 0.003, 0.003, 0.003, 0.003]],
 ];
-// Error de la posición inicial X (NM), tabla H-2 y apartado H.3.3.1 (si no se sabe cómo navegaba)
-const POS_ERROR = [['GPS / baliza 406 con GPS', 0.1], ['Radar', 1], ['Baliza SARSAT (Doppler)', 3], ['Desconocido: barco', 5],
-  ['Desconocido: avión bimotor', 10], ['Desconocido: embarcación o monomotor', 15]];
+// Error de la posición inicial X (NM): cómo se conoce la última posición. Tabla H-2 y apartado H.3.3.1 (estima según
+// cómo navegaba); para qué objetos tiene sentido cada una: p persona (o kayak, tabla), b embarcación o balsa de barco,
+// a balsa o tobogán de avión. [clave, texto, X, para]
+// ponytail: testigos (2 NM), caída sin hora (10 NM) y solo la zona (25 NM) son estimaciones, no de las tablas
+const POS_ERROR = [
+  ['gps', 'GPS o baliza 406 con GPS', 0.1, 'pba'],
+  ['mob', 'Hombre al agua marcado en el GPS del barco', 0.1, 'p'],
+  ['plb', 'Baliza personal o AIS del chaleco', 0.1, 'p'],
+  ['radar', 'Seguido por radar', 1, 'ba'],
+  ['witness', 'Testigos desde la costa u otro barco', 2, 'p'],
+  ['doppler', 'Baliza 406 sin GPS (SARSAT Doppler)', 3, 'ba'],
+  ['mobTrack', 'Cayó de un barco sin saber cuándo (solo su ruta)', 10, 'p'],
+  ['drShip', 'Desconocida: estima de un barco', 5, 'b'],
+  ['drSmall', 'Desconocida: embarcación pequeña o persona sola', 15, 'pb'],
+  ['drTwin', 'Desconocida: estima de un avión bimotor', 10, 'a'],
+  ['drSingle', 'Desconocida: estima de un monomotor', 15, 'a'],
+  ['zone', 'Solo se sabe la zona aproximada', 25, 'pba'],
+];
+const posKind = obj => (/^(piw|kayak|surf|windsurf)/.test(obj) ? 'p' : /^(raftAvi|slide)$/.test(obj) ? 'a' : 'b');
+const posError = key => (POS_ERROR.find(o => o[0] === key) || POS_ERROR[0])[2];
 // Señales y luces: anchura de barrido fija desde el aire (NM), tablas H-20 a H-24 (no dependen de altitud ni visibilidad).
 // Se añaden como grupo a SWEEP_OBJ. Bengala de mano y estroboscópica: valores medidos con helicópteros.
 const SWEEP_FIXED = { 'Strobe 50k': 4.4, 'Strobe 2k': 0.5, 'Cyalume': 1.0, 'Flashlight': 3.0, 'Hand flare': 15.4, 'Parachute flare': 10.0,

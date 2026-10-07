@@ -5,7 +5,7 @@ const geo = fs.readFileSync(path.join(dir, "data/iamsar.js"), "utf8") + "\n" + f
 for (const f of fs.readdirSync(path.join(dir, "app")).filter(f => f.endsWith(".js"))) // sintaxis de todos los .js
   new Function(fs.readFileSync(path.join(dir, "app", f), "utf8"));
 const g = new Function(geo + `;return {buildPattern, buildPln, departurePosition, sweepWidth, bestAreaRoute, polyAreaM2, splitPlan,
-  icaoCoord, resolveVia, procPoints, bestHeading, centeredCsp, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc, driftDatum, leeway, windCurrent, bestEffort, coastDist}`)();
+  icaoCoord, resolveVia, procPoints, bestHeading, centeredCsp, flownPath, patternCenter, buildFplIcao, dist, brg, proj, turnRadius, groundSpeed, pathTime, NM, gtnTurns, easeTurn, procRwyOk, windRunway, bestProc, driftDatum, leeway, windCurrent, bestEffort, coastDist}`)();
 const { NM } = g, c = [41.4, 2.0], R = g.turnRadius(120, 25);
 const at = (n, e) => g.proj(g.proj(c, 0, n * NM), 90, e * NM);
 const legStr = w => w.slice(1).map((x, i) => (g.dist(w[i].pos, x.pos) / NM).toFixed(1) + "@" + Math.round(g.brg(w[i].pos, x.pos)));
@@ -63,6 +63,17 @@ for (const type of ["PS", "CS", "TSR", "ZZ"]) {
   assert(g.dist([(Math.min(...la) + Math.max(...la)) / 2, (Math.min(...lo) + Math.max(...lo)) / 2], c) < 5, `${type} centrado en el datum`);
 }
 assert.deepEqual(g.centeredCsp({ ...base, type: "SS" }, c), c);
+// Giro que no cabe: el avión simulado nunca gira más cerrado que R, vuelve a la línea y acaba en el último punto
+{
+  const Rr = 1000, pts = [at(0, 0), at(5, 0), at(5, 0.3), at(0, 0.3), at(0, -10)]; // horquilla de 0,3 NM con R = 1 km
+  const fl = g.flownPath(pts, [[1, 3]], Rr), q = fl.pts;
+  assert(g.dist(q[q.length - 1], pts[pts.length - 1]) < 1, "acaba en el último punto");
+  for (let i = 2; i < q.length - 1; i++) {
+    const a = g.dist(q[i - 1], q[i]), turn = Math.abs(((g.brg(q[i], q[i + 1]) - g.brg(q[i - 1], q[i]) + 540) % 360) - 180) * Math.PI / 180;
+    if (a > 1 && g.dist(q[i], q[i + 1]) > 1) assert(turn <= a / Rr * 1.05 + 1e-3, `giro más cerrado que R en ${i}`);
+  }
+  assert(fl.sims.length === 1 && fl.at[fl.at.length - 1] === q.length - 1, "un tramo simulado y los índices al día");
+}
 ok("patrones clásicos, gota y crosshatch");
 
 // ---------- Costa (data/costa.js) ----------
