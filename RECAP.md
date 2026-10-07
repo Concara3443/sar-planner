@@ -4,11 +4,14 @@ Abrir: doble clic en `sar.html` (mejor en Chrome o Edge). Pruebas: `node tests/t
 Datos (aeropuertos, fixes, SID, STAR): `python scripts/exportar_aeropuertos.py` tras actualizar Little Navmap.
 
 ## Cómo se usa
-1. **Avión y vuelo**: tu avión, salida, destino, posición, TAS y altitud de búsqueda, crucero, viento (o «Viento real»).
-2. **Qué vas a hacer**: Buscar (SAR, con tablas IAMSAR), Fotografía (calidad cm/px → altura) o Libre.
-3. **Dónde**: dibuja un área o elige un patrón. Rumbo automático = el más rápido.
+1. **Misión**: Buscar (SAR, tablas IAMSAR; en 🌊 Deriva marcas en el mapa dónde se perdió), Fotografía (MP, objetivo,
+   calidad cm/px → altura) o Libre.
+2. **Avión y salida**: avión, salida, destino (o base SAR), TAS y altitud. Bajo la TAS: ⏱ con qué velocidad acaba antes
+   el patrón y 🎯 la real para la misión. Autonomía y viento en sus desplegables.
+3. **Zona o patrón**: elige un patrón o dibuja el área (fotografía). Punto rojo = centro del patrón. Gota, entrelazado y
+   primer giro, aquí mismo.
 4. **Ruta** (opcional): SID, puntos intermedios (fixes, VOR, NDB o coordenadas), STAR.
-5. Pulsa **✨** → guarda en el GTN750, descarga el .pln, copia el **plan ICAO** para VATSIM o abre la **hoja de vuelo**.
+5. Pulsa **✨ Optimizar** → guarda en el GTN750, descarga el .pln, copia el **plan ICAO** o abre la **hoja de vuelo**.
 
 ## Todo lo pedido — hecho
 - [x] Sustituir OpenCPN → GPX → .bat por una web con mapa satélite y preview
@@ -41,9 +44,35 @@ Datos (aeropuertos, fixes, SID, STAR): `python scripts/exportar_aeropuertos.py` 
 - [x] Señales y luces como objeto (estroboscópica, bengalas, espejo, humo…; tablas H-20 a H-24)
 - [x] 🎲 Simular un caso con el avión elegido: búsqueda en el mar desde una base SAR real (con deriva, mejor patrón y posición real oculta que se puede revelar) o encargo de fotografía, según lo que pueda hacer el avión
 
+- [x] Repo público con enlace al código y marca de agua; en el portfolio (apps y proyectos)
+- [x] Gota como la vuela el GTN750: vuelta en bombilla con giros fly-by encadenados al banco marcado (sin el giro de 90°
+      de después); en esquinas (sector, cuadrado, cuadrícula cruzada) el giro empieza justo sobre la esquina
+- [x] Menús por misión: la misión primero y decide lo que se ve; cámara en megapíxeles; submenús desplegables;
+      un solo ✨ Optimizar; 🎲 Simular y 🗑 Nueva en la cabecera; sin reinicios duplicados
+- [x] Deriva marcada en el mapa (punto arrastrable); el patrón se centra solo en el datum (PS/CS por su centro);
+      ✨ en SAR: PS con pasadas perpendiculares a la deriva y el primer giro hacia donde deriva (nada de polígono)
+- [x] Precisión de la última posición según lo que buscas (persona, barco, avión), con casos sin posición precisa
+- [x] ↺ Restablecer el patrón · opción de 30° del VS junto al patrón · punto rojo = centro del patrón
+- [x] Giros que no caben, en rojo y dibujados como los vuela el autopiloto (simulado: se pasa y vuelve a la línea)
+- [x] Velocidad: ⏱ con cuál acaba antes el patrón (probando cada TAS: gota, entrelazado y S cambian con ella) y 🎯 la real
+      (SAR: tabla H-9; fotografía: sin fotos movidas a esa altitud); ✨ usa la misma cuenta
+- [x] Hoja de vuelo con la deriva y el datum; tránsitos a crucero (cuadra con el EET)
+- [x] Móvil: el mapa se ve (antes 0 px), arriba, con la leyenda plegada
+- [x] Áreas: el rumbo cuenta los giros reales (un área convexa ya no sale en 9 zonas) y recalcular es ~6 veces más rápido;
+      planes divididos sin media gota al final de un vuelo
+
+## Dudas para hablar
+- **Primer tramo del SS y del VS con deriva**: ahora salen con el rumbo automático (el más corto). El IAMSAR suele orientar
+  el primer tramo según el viento o la deriva; no lo he tocado sin confirmarlo contigo.
+- **Velocidad real en fotografía**: supone obturador a 1/2000 s y medio píxel de movimiento como máximo. Si tu cámara del
+  simulador dispara más rápido, se puede subir.
+- **Gota en el sector (VS)**: ya es fly-by y realista, pero a veces deja giros en rojo; sin gota el VS suele caber mejor.
+- **Giros al salir o llegar al aeródromo**: se siguen dibujando en rojo (tramos cortos de SID/STAR), pero ya no cuentan
+  como error del patrón.
+
 ## A tener en cuenta
 - Velocidades, equipos ICAO y consumos de cada avión son orientativos (tablas `PROFILES` y `FPL_EQ` en `app/ui.js`).
 - En el .pln los fixes de SID/STAR van marcados como procedimiento; si el GTN750 o MSFS no los reconocen como SID/STAR, igualmente se vuelan como puntos.
 - Los giros se calculan como el GTN750 de PMS50 (SDK Working Title): 17,5° de banco a la GS con viento de cola; poner más banco no cierra los giros.
-- La trayectoria y el timelapse no calculan la deriva del viento en los giros.
+- La trayectoria y el timelapse no calculan la deriva del viento en los giros (la simulación de giros rojos tampoco).
 - «Guardar en GTN750» y el viento real no se pueden probar sin abrir la página a mano (piden permiso / internet).
