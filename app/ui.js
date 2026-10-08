@@ -120,10 +120,11 @@ $('apts').innerHTML = Object.entries(DB).map(([k, a]) => `<option value="${k}">$
 
 const NAVDB = typeof NAV_DB === 'object' && NAV_DB.nav ? NAV_DB : { nav: {}, proc: {} };
 // SID de la salida y STAR del destino (de la base de datos de Little Navmap)
-// Viento en superficie para elegir pista: el METAR si es de ese aeropuerto; si no, el de los campos de viento
+// Viento en superficie para elegir pista: el METAR si es de ese aeropuerto y trae viento (≥ 3 kt); con calma o variable
+// en el METAR, el de los campos de viento (el de ruta), que mejor eso que no elegir pista
 function surfWind(icao) {
   const x = WX.metarFor === icao && /\b(\d{3})(\d{2,3})(?:G\d{2,3})?KT\b/.exec(WX.metar || '');
-  return x ? { dir: +x[1], kt: +x[2] } : { dir: +$('wdir').value, kt: +$('wkt').value };
+  return x && +x[2] >= 3 ? { dir: +x[1], kt: +x[2] } : { dir: +$('wdir').value, kt: +$('wkt').value };
 }
 // Pista de la ruta: la elegida o, en «Auto», la de más viento de cara (null = cualquiera)
 function routeRwy(icao, sel) {
@@ -137,7 +138,7 @@ function fillProcs(keepSid = $('sid').value, keepStar = $('star').value, keepDep
   const setSel = (id, html, keep, fallback = '') => { $(id).innerHTML = html; $(id).value = keep; if ($(id).value !== keep) $(id).value = $(id).querySelector(`[value="${fallback}"]`) ? fallback : ''; };
   for (const [id, icao, keep] of [['rwyDep', dep, keepDep], ['rwyArr', arr, keepArr]]) {
     const r = routeRwy(icao, '');
-    setSel(id, `<option value="">Auto${r ? ` (${r} por el viento)` : ' (cualquiera)'}</option>`
+    setSel(id, `<option value="">Auto${r ? ` (${r} por el viento)` : ' (sin viento: la que acorta el camino)'}</option>`
       + (apt(icao)?.rwys || []).map(x => `<option value="${x}">${x}</option>`).join(''), keep);
   }
   const opts = (icao, type, rwy, none) => {
@@ -641,13 +642,16 @@ function update() {
   const gate = (g, ft, kind) => { const q = g && resolveVia(g.fix, NAVDB.nav, apt(kind === 'dep' ? dep : arr)?.pos).pts[0]; return q ? [{ ...q, alt: ft, gate: kind }] : []; };
   // SID/STAR: la elegida o, con «✨», la que hace más corto el camino entre el aeropuerto y la zona por la pista en servicio
   const zone = p.type === 'AREA' && p.area.length >= 3 ? p.area.reduce(([a, b], [x, y]) => [a + x / p.area.length, b + y / p.area.length], [0, 0]) : p.csp;
-  const procKey = (id, icao, type, rwyId, a, b) => {
+  const procKey = (id, icao, type, rwyId, a, b, rwy = routeRwy(icao, $(rwyId).value)) => {
     if ($(id).value !== 'auto') return $(id).value;
-    const k = a && b ? bestProc(NAVDB.proc, icao, type, routeRwy(icao, $(rwyId).value), a, b) : '';
+    const k = a && b ? bestProc(NAVDB.proc, icao, type, rwy, a, b) : '';
     $(id).querySelector('[value=auto]').textContent = k ? `✨ La mejor: ${k.replace(' ', ' · pista ')}` : '✨ La mejor hacia la zona';
     return k;
   };
-  const sidKey = procKey('sid', dep, 'SID', 'rwyDep', D?.pos, zone), starKey = procKey('star', arr, 'STAR', 'rwyArr', zone, A?.pos);
+  const sidKey = procKey('sid', dep, 'SID', 'rwyDep', D?.pos, zone);
+  // Sin viento, se sale y se llega al mismo aeródromo por la misma pista (una sola configuración): la de la SID elegida
+  const sidRwy = sidKey && sidKey.split(' ')[1], sameCfg = arr === dep && !routeRwy(arr, $('rwyArr').value) && sidRwy && sidRwy !== 'ALL';
+  const starKey = procKey('star', arr, 'STAR', 'rwyArr', zone, A?.pos, sameCfg ? sidRwy : undefined);
   const gD = transitIfr && !sidKey ? VFR_GATES[dep] : null, gA = transitIfr && !starKey ? VFR_GATES[arr] : null;
   const viaOut = vOut.pts.filter((q, i) => !(gD && i === 0 && q.name === gD.fix));
   const viaBack = vBack.pts.filter((q, i, a) => !(gA && i === a.length - 1 && q.name === gA.fix));
@@ -1045,8 +1049,16 @@ $('unit').addEventListener('change', () => {
   for (const f of DIST) $(f).value = fmt(+$(f).value * UNIT_M[prevUnit] / unitM());
   prevUnit = $('unit').value;
 });
-$('dep').addEventListener('input', () => { fillPositions($('park').value); fillProcs(); });
-$('arr').addEventListener('input', () => fillProcs());
+// Otro aeródromo: pista por el viento y la mejor SID/STAR (las de antes no valen; si no, se quedaba «sin SID»)
+let lastDep = $('dep').value.trim().toUpperCase(), lastArr = $('arr').value.trim().toUpperCase();
+const aptChanged = () => {
+  const d = $('dep').value.trim().toUpperCase(), a = $('arr').value.trim().toUpperCase();
+  const dc = d !== lastDep && apt(d), ac = a !== lastArr && apt(a);
+  if (dc) lastDep = d; if (ac) lastArr = a;
+  fillProcs(dc ? 'auto' : $('sid').value, ac ? 'auto' : $('star').value, dc ? '' : $('rwyDep').value, ac ? '' : $('rwyArr').value);
+};
+$('dep').addEventListener('input', () => { fillPositions($('park').value); aptChanged(); });
+$('arr').addEventListener('input', aptChanged);
 $('gsd').addEventListener('change', () => {
   if (!$('gsd').value) return;
   const swath = +$('gsd').value / 100 * (+$('px').value || 6000);
