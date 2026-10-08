@@ -903,6 +903,11 @@ function update() {
   styleApts();
   tlRefresh();
   $('fplOut').value = fplText(); syncStsPick();
+  // Bajo «Reglas»: la secuencia que sale de verdad en el plan (casilla 15), con dónde se cambia
+  const fv = $('fplOut').value, letter = /\(FPL-[^-]*-([IVYZ])/.exec(fv)?.[1];
+  const chg = [...fv.matchAll(/(?:^|\s)([A-Z0-9]+)(?:\/\S+)? (IFR|VFR)(?=\s|$)/g)].map(m => `${m[2]} en ${m[1]}`);
+  $('rulesInfo').innerHTML = !letter ? '' : `En el plan: <b>${letter}</b> · ${[{ I: 'IFR', V: 'VFR', Y: 'IFR', Z: 'VFR' }[letter], ...chg].join(' → ')}`
+    + (letter !== $('rules').value ? ' (la letra la dan los cambios de verdad; p. ej. desde LELL se sale VFR)' : '');
   $('sts').placeholder = stsValue() && !$('sts').value ? `auto: ${stsValue()}` : 'auto';
   scheduleWind();
   const st = {};
@@ -1319,7 +1324,11 @@ const TYPE_WAKE = { A139: 'L', EC25: 'M', AS32: 'M', NH90: 'M', CN35: 'M', C295:
 // (o la que elijas en «Misión»)
 const missionKind = () => $('fplMission').value || ($('cov').value === 'cam' ? 'photo' : $('cov').value === 'sar' || $('drift').checked ? 'sar' : 'survey');
 // STS/: el que escribas o marques; vacío = automático (SAR en búsqueda); «-» = ninguno
-const stsValue = () => { const v = $('sts').value.trim(); return v === '-' ? '' : clean18(v) || (missionKind() === 'sar' ? 'SAR' : ''); };
+// STS automático según el vuelo: SAR en una búsqueda real; STATE en vuelos de Estado (militar, o operador policial,
+// militar o de aduanas). HOSP, MEDEVAC, HUM y FLTCK no se deducen de nada de la página: a mano
+const stsAuto = () => [missionKind() === 'sar' && 'SAR',
+  ($('ftype').value === 'M' || /GUARDIA CIVIL|POLICIA|EJERCITO|ARMADA|ADUANA|VIGILANCIA ADUANERA/.test(clean18($('opr').value))) && 'STATE'].filter(Boolean).join(' ');
+const stsValue = () => { const v = $('sts').value.trim(); return v === '-' ? '' : clean18(v) || stsAuto(); };
 // Casillas de STS: reflejan el valor efectivo y, al marcarlas, lo escriben en el campo
 function syncStsPick() { const t = stsValue().split(' '); for (const c of $('stsPick').querySelectorAll('input')) c.checked = t.includes(c.value); }
 $('stsPick').addEventListener('change', () => {
