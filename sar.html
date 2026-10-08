@@ -9,7 +9,7 @@
 <!-- Generado por scripts\exportar_aeropuertos.py desde Little Navmap (MSFS 2024) -->
 <script>
 // Versión: súbela al cambiar cualquier .js o .css y el navegador los vuelve a pedir (si no, puede usar una copia vieja)
-const V = 40, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
+const V = 41, load = (src, onerror = '') => document.write(`<script src="${src}?v=${V}" onerror="${onerror}"><\/script>`);
 document.write(`<link rel="stylesheet" href="app/sar.css?v=${V}">`);
 addEventListener('DOMContentLoaded', () => { document.getElementById('ver').textContent = 'v' + V; });
 load('data/aeropuertos.js', 'window.AIRPORTS_DB = {}');
@@ -279,13 +279,13 @@ load('data/costa.js', 'window.COAST = []');
         <label>Indicativo <input id="cs" placeholder="ECGCM"></label>
 
         <label>Tipo de vuelo <select id="ftype">
-          <option value="X">X · otro (SAR, survey)</option><option value="G">G · aviación general</option>
-          <option value="M">M · militar</option><option value="N">N · no regular</option>
+          <option value="X" title="Otros: SAR, trabajo aéreo, fotografía, survey…">X · otro (SAR, survey)</option><option value="G" title="Aviación general (privado, escuela)">G · aviación general</option>
+          <option value="M" title="Militar">M · militar</option><option value="N" title="Transporte aéreo no regular">N · no regular</option>
         </select></label>
       </div>
       <label>Reglas <select id="rules" title="Qué tramos vuelas en IFR. La letra (I/V/Y/Z) y los cambios se calculan solos; desde/hacia LELL se cambia en SLL.">
-          <option value="I">I · IFR</option><option value="V">V · VFR</option>
-          <option value="Y">Y · IFR → VFR → IFR</option><option value="Z">Z · VFR → IFR → VFR</option>
+          <option value="I" title="Todo el vuelo IFR">I · IFR</option><option value="V" title="Todo el vuelo VFR">V · VFR</option>
+          <option value="Y" title="Empieza IFR y cambia a VFR (aquí: tránsitos IFR y la zona VFR)">Y · IFR → VFR → IFR</option><option value="Z" title="Empieza VFR y cambia a IFR (aquí: tránsitos VFR y la zona IFR)">Z · VFR → IFR → VFR</option>
         </select></label>
       <div id="rulesInfo" class="hint"></div>
       <div class="grid3">
@@ -314,10 +314,10 @@ load('data/costa.js', 'window.COAST = []');
         </datalist>
       </div>
       <div id="fplTypeBtns" class="hint"></div>
-      <div id="stsPick" class="chips" title="Marca uno o varios indicadores STS/">STS:
-        <label><input type="checkbox" value="SAR"> SAR</label> <label><input type="checkbox" value="STATE"> STATE</label>
-        <label><input type="checkbox" value="HOSP"> HOSP</label> <label><input type="checkbox" value="MEDEVAC"> MEDEVAC</label>
-        <label><input type="checkbox" value="HUM"> HUM</label> <label><input type="checkbox" value="FLTCK"> FLTCK</label>
+      <div id="stsPick" class="chips">STS:
+        <label title="SAR: Vuelo de búsqueda y salvamento"><input type="checkbox" value="SAR"> SAR</label> <label title="STATE: Vuelo de Estado: militar, policía, aduanas"><input type="checkbox" value="STATE"> STATE</label>
+        <label title="HOSP: Vuelo médico declarado por las autoridades sanitarias"><input type="checkbox" value="HOSP"> HOSP</label> <label title="MEDEVAC: Evacuación médica urgente (riesgo para la vida)"><input type="checkbox" value="MEDEVAC"> MEDEVAC</label>
+        <label title="HUM: Misión humanitaria"><input type="checkbox" value="HUM"> HUM</label> <label title="FLTCK: Verificación en vuelo de radioayudas (calibración)"><input type="checkbox" value="FLTCK"> FLTCK</label>
       </div>
       <label>Misión (lo que dice el RMK y el STS automático) <select id="fplMission">
         <option value="">Auto (según lo que haces en la página)</option><option value="sar">Búsqueda SAR</option>
