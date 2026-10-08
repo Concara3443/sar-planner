@@ -48,6 +48,21 @@ assert(!ext.includes("CSP2X") && ext.includes("CSP4X") && ext.includes("V1X"));
   const xs = q.map((x, i) => [x, i]).filter(([x]) => x.ext);
   assert(xs.length && xs.every(([x, i]) => !t[i].over && Math.abs(t[i].D - g.dist(q[i - 1].pos, x.pos)) < 5), "VS: el giro empieza en la esquina");
 }
+// Con gota, ENTRADA y SALIDA: el giro desde el tránsito acaba justo al empezar la primera pasada y el giro hacia el
+// tránsito de vuelta empieza justo al acabar la última (no recortan pasadas); si el tránsito va en sentido contrario,
+// en U con dos giros de 90° que caben justos. Se prueba con el tránsito por delante y por detrás.
+const gates = [];
+for (const [from, to] of [[at(-6, 4), at(8, 6)], [at(9, 3), at(-7, -2)], [at(8, -3), at(8, 4)]]) {
+  const r = 1 * NM, q = g.buildPattern({ ...base, type: "PS", gota: true, hdg: 0, len: 4 * NM, sp: 0.4 * NM, n: 4, radius: r, from, to });
+  const route = [{ pos: from }, ...q, { pos: to }], t = g.gtnTurns(route, r), n = route.length;
+  const k0 = q.findIndex(x => !x.ext) + 1, k1 = n - 1 - [...q].reverse().findIndex(x => !x.ext) - 1; // primera y última pasada en route
+  gates.push(...q.filter(x => /^(ENTRADA|SALIDA)/.test(x.name)).map(x => x.name));
+  assert(t.slice(1, k0).concat(t.slice(k1 + 1, n - 1)).every(x => x.fit > 1 - 1e-6), "los giros de entrada y salida caben");
+  if (q[0].ext) assert(Math.abs(t[k0 - 1].D - g.dist(route[k0 - 1].pos, route[k0].pos)) < 5, "el giro de entrada acaba al empezar la pasada");
+  if (q[q.length - 1].ext) assert(Math.abs(t[k1 + 1].D - g.dist(route[k1].pos, route[k1 + 1].pos)) < 5, "el giro de salida empieza al acabar la pasada");
+}
+assert(["ENTRADA", "ENTRADA2", "SALIDA", "SALIDA2"].every(k => gates.includes(k)), "entrada y salida simples y en U: " + gates);
+assert(!g.buildPattern({ ...base, type: "PS", gota: false, hdg: 0, len: 4 * NM, sp: 0.4 * NM, n: 4, radius: NM, from: at(-6, 4), to: at(8, 6) }).some(x => x.ext), "sin gota, nada");
 // Crosshatch: la 2ª pasada empieza en la esquina más cercana (sin vuelta de 180°)
 w = g.buildPattern({ ...base, type: "PS", xh: true, hdg: 90, len: 6 * NM, sp: 1.5 * NM, n: 4, radius: R });
 assert(turnsOf(w).every(a => a < 170), "crosshatch sin giros de 180°");

@@ -455,7 +455,7 @@ function buildOne(p) {
   });
   res.areaBrg = areaBrg;
   res.areaCells = out.areaCells;
-  return overflyFlyBy(res, p.radius);
+  return gateEnds(overflyFlyBy(res, p.radius), p);
 }
 
 // Puntos de sobrepaso (ext sin fb: esquinas del sector, del cuadrado, de la cuadrícula cruzada): el GTN no sobrevuela
@@ -473,8 +473,45 @@ function overflyFlyBy(w, r) {
       if (ad > 170) { d = r; break; }
       d = r * Math.tan(ad / 2 * RAD);
     }
-    x.pos = proj(W, b1, d); x.fb = true;
+    x.pos = proj(W, b1, d * 1.001); x.fb = true; // +0,1 %: que el redondeo esfera/plano no lo deje sin caber
   });
+  return w;
+}
+// Con gota, entrada y salida del patrón sin recortar pasadas: el GTN empieza a girar antes del punto, así que la
+// primera pasada empezaría tarde y la última acabaría antes. Se añade un punto ENTRADA antes de la primera pasada,
+// a la distancia que hace que el giro desde el tránsito (p.from) acabe justo al empezarla, y otro SALIDA tras la
+// última, a la que hace que el giro hacia el tránsito de vuelta (p.to) empiece justo al acabarla (giro abierto
+// en vez de uno muy cerrado). Solo si el giro pasa de 30°. Mismo cálculo que overflyFlyBy: d = r·tan(giro / 2).
+// Si el giro pasa de 120° (el tránsito llega o se va en sentido contrario a la pasada) un solo punto no vale: se
+// hace en U con dos puntos a 2r del lado del tránsito, dos giros de 90° que caben justos (tramo de 2r = D + D).
+function gateEnds(w, p) {
+  const r = p.radius, ang = (a, b) => Math.abs(((b - a + 540) % 360) - 180), n = w.length;
+  if (!r || n < 2) return w;
+  const gate = (A, b, other, toOther) => { // punto a d de A por el rumbo b; el giro es contra el tramo hacia/desde other
+    let d = r, ad = 0;
+    for (let k = 0; k < 8; k++) {
+      const X = proj(A, b, d);
+      ad = toOther ? ang(b, brg(X, other)) : ang(brg(other, X), b + 180);
+      if (ad > 170) { d = r; break; }
+      d = r * Math.tan(ad / 2 * RAD);
+    }
+    return ad > 30 && { pos: proj(A, b, d * 1.001), turn: false, ext: true, fb: true }; // +0,1 %, como en la gota
+  };
+  const bIn = brg(w[0].pos, w[1].pos), bOut = brg(w[n - 2].pos, w[n - 1].pos);
+  // U: P1 a r de la pasada (por detrás / por delante) y P2 a 2r de P1 hacia el lado donde está el tránsito
+  const side = (A, b, q) => (Math.sin((brg(A, q) - b) * RAD) < 0 ? -1 : 1);
+  const u = (A, b, q, back) => { const P1 = proj(A, b, r * 1.001), P2 = proj(P1, b + 90 * side(A, back ? b + 180 : b, q) * (back ? -1 : 1), 2 * r * 1.001);
+    return [P1, P2].map(pos => ({ pos, turn: false, ext: true, fb: true })); };
+  const big = (A, b, q, toQ) => (toQ ? ang(b, brg(A, q)) : ang(brg(q, A), b)) > 120; // giro de salida / de entrada
+  if (p.from) {
+    if (big(w[0].pos, bIn, p.from, false)) { const [P1, P2] = u(w[0].pos, bIn + 180, p.from, true); w.unshift({ ...P2, name: 'ENTRADA' }, { ...P1, name: 'ENTRADA2' }); }
+    else { const g1 = gate(w[0].pos, bIn + 180, p.from, false); if (g1) w.unshift({ ...g1, name: 'ENTRADA' }); }
+  }
+  if (p.to) {
+    const m = w.length;
+    if (big(w[m - 1].pos, bOut, p.to, true)) { const [P1, P2] = u(w[m - 1].pos, bOut, p.to, false); w.push({ ...P1, name: 'SALIDA' }, { ...P2, name: 'SALIDA2' }); }
+    else { const g2 = gate(w[m - 1].pos, bOut, p.to, true); if (g2) w.push({ ...g2, name: 'SALIDA' }); }
+  }
   return w;
 }
 // Gota de la pasada A→E a la siguiente N→M (en sentido contrario, a S < 2r) como la vuela el GTN750: solo giros fly-by

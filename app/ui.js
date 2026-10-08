@@ -260,6 +260,9 @@ function styleApts() {
 const layer = L.layerGroup().addTo(map);
 map.createPane('cover').style.zIndex = 380;
 map.createPane('trail').style.zIndex = 390;
+// Giros naranja y rojo encima del canvas de los aeródromos (en overlayPane, 400): si no, el canvas se queda el ratón y
+// no salía su explicación al pasar por encima
+map.createPane('turns').style.zIndex = 420;
 const trackLayer = L.layerGroup().addTo(map);
 const coverLayer = L.layerGroup().addTo(map);
 layersCtl.addOverlay(layer, '<span style="color:#ffd23f">━</span> Plan (waypoints del GTN)');
@@ -651,7 +654,7 @@ function update() {
   const pre = [...procPoints(NAVDB.proc, dep, 'SID', sidKey), ...(gD ? gate(gD, gD.depFt, 'dep') : []), ...viaOut];
   const post = [...viaBack, ...(gA ? gate(gA, gA.arrFt, 'arr') : []), ...procPoints(NAVDB.proc, arr, 'STAR', starKey)];
   const from = pre.length ? pre[pre.length - 1].pos : D?.pos, to = post.length ? post[0].pos : A?.pos;
-  p.from = from;
+  p.from = from; p.to = to;
   // Rumbo automático: el que hace más corto el vuelo completo (en el área lo elige su propio cálculo)
   if (AUTO_HDG.includes(p.type) && $('auto').checked) $('hdg').value = p.hdg = bestHeading(p, from, to, followCenter(p));
   const allW = buildPattern(p);
@@ -721,7 +724,7 @@ function update() {
     if (over) { // sobrevuelo: pasa por el punto, gira hasta apuntar al siguiente y va recto
       arc.push(...flyOverArc(W, b1, B, sgn, p.radius));
       path.push(W, ...arc);
-      if (!R[i].ext) oranges.push(L.polyline(arc, { pane: 'trail', color: '#ff9f1c', weight: 5 })
+      if (!R[i].ext) oranges.push(L.polyline(arc, { pane: 'turns', color: '#ff9f1c', weight: 5 })
         .bindTooltip(`Giro de ${Math.round(ad)}°: el GTN750 no lo anticipa, hace un viraje de procedimiento (bucle de ${showD(2 * p.radius)}).`));
       if (i === i1) patEnd = path.length - 1;
       continue;
@@ -733,7 +736,7 @@ function update() {
     path.push(...arc);
     if (ad > WIDE && !R[i].ext) { // giro anticipado tan cerrado que el avión pasa lejos del waypoint
       const cut = r / Math.cos(ad / 2 * RAD) - r;
-      oranges.push(L.polyline(arc, { pane: 'trail', color: '#ff9f1c', weight: 5 })
+      oranges.push(L.polyline(arc, { pane: 'turns', color: '#ff9f1c', weight: 5 })
         .bindTooltip(`Giro de ${Math.round(ad)}°: el GTN750 empieza a girar ${showD(D)} antes y pasa a ${showD(cut)} del waypoint, sin sobrevolarlo.`));
     }
     if (i === i1) patEnd = path.length - 1;
@@ -744,7 +747,7 @@ function update() {
   // Giros que no caben: lo que vuela de verdad el autopiloto (se pasa y vuelve a la línea), en rojo
   lastPatReds = redIdx.filter(([a, b]) => b >= patStart && a <= patEnd).length; // los del patrón (sin los del aeropuerto)
   const flown = flownPath(path, redIdx, p.radius);
-  for (const sim of flown.sims) reds.push(L.polyline(sim, { pane: 'trail', color: '#ff3b3b', weight: 5 })
+  for (const sim of flown.sims) reds.push(L.polyline(sim, { pane: 'turns', color: '#ff3b3b', weight: 5 })
     .bindTooltip(`Giro que no cabe: el GTN750 lo dibuja más cerrado de lo que gira el avión (radio ${showD(p.radius)}); así lo vuela el autopiloto: se pasa y vuelve a la línea`));
   path.splice(0, path.length, ...flown.pts);
   patStart = flown.at[patStart]; patEnd = flown.at[patEnd];
@@ -1348,7 +1351,7 @@ function fplFields() {
     cruiseKt: prof.cruise || +$('tas').value, // tránsito a velocidad de crucero; la búsqueda, a la TAS de búsqueda
     cruiseFt: +$('cruise').value || +$('alt').value, patKt: +$('tas').value, patFt: +$('alt').value,
     out: [...(sid ? [sid, sidP[sidP.length - 1].name] : []), ...plan.pre.filter(q => !q.sid).map(q => q.icao || icaoCoord(q.pos))],
-    pattern: wpts.map(w => w.pos),
+    pattern: wpts.filter(w => !w.ext).map(w => w.pos), // sin los puntos de la gota: solo hacen falta en el GTN
     back: [...plan.post.filter(q => !q.star).map(q => q.icao || icaoCoord(q.pos)), ...(star ? [starP[0].name, star] : [])],
     eetSec: (lastTimes.pat || 0) + (lastTimes.tr || 0),
     depGate: plan.pre.filter(q => q.gate === 'dep').map(q => ({ fix: q.name, ft: q.alt }))[0] || null,
